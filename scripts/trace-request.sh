@@ -24,7 +24,11 @@ NC='\033[0m'
 
 echo -e "${BLUE}"
 echo "╔══════════════════════════════════════════════════════════════════════╗"
+<<<<<<< HEAD
 echo "║            REQUEST TRACE: $REQUEST_ID"
+=======
+echo "║           🔍 REQUEST TRACE: $REQUEST_ID"
+>>>>>>> feature/service-a-integration
 echo "╚══════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 

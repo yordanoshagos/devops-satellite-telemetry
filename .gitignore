@@ -1,6 +1,50 @@
+<<<<<<< HEAD
 venv/
 __pycache__/
 *.pyc
 .env
 *.egg-info/
 dist/
+=======
+# Python virtual environments (NEVER push!)
+venv/
+env/
+ENV/
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environment variables (if you add .env later)
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+>>>>>>> feature/service-a-integration

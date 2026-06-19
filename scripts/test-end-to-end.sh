@@ -17,7 +17,11 @@ NC='\033[0m'
 
 echo -e "${BLUE}"
 echo "╔══════════════════════════════════════════════════════════════════════╗"
+<<<<<<< HEAD
 echo "║           END-TO-END PIPELINE TEST                                ║"
+=======
+echo "║           🧪 END-TO-END PIPELINE TEST                                ║"
+>>>>>>> feature/service-a-integration
 echo "║           Satellite Telemetry Processing System                      ║"
 echo "╚══════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"

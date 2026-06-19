@@ -19,7 +19,11 @@ NC='\033[0m'
 
 echo -e "${BLUE}"
 echo "╔══════════════════════════════════════════════════════════════════════╗"
+<<<<<<< HEAD
 echo "║           MOCK SATELLITE TELEMETRY GENERATOR                    ║"
+=======
+echo "║           📡 MOCK SATELLITE TELEMETRY GENERATOR                    ║"
+>>>>>>> feature/service-a-integration
 echo "║           Mode: $MODE"
 echo "╚══════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
