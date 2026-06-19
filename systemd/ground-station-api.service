@@ -8,11 +8,11 @@ Requires=telemetry-parser.service anomaly-detector.service
 Type=simple
 User=groundstation
 Group=groundstation
-WorkingDirectory=/Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-a
+WorkingDirectory=/opt/devops-satellite-telemetry/service-a
 
 # Wait for dependencies to be ready before starting
 ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do curl -s http://telemetry-parser:3002/health > /dev/null && curl -s http://anomaly-detector:3003/health > /dev/null && exit 0; sleep 2; done; exit 1'
-ExecStart=/Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-a/venv/bin/python /Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-a/app.py
+ExecStart=/opt/devops-satellite-telemetry/service-a/venv/bin/python /opt/devops-satellite-telemetry/service-a/app.py
 
 Restart=always
 RestartSec=5
