@@ -1,0 +1,26 @@
+[Unit]
+Description=Telemetry Parser - Satellite Data Processing
+Documentation=https://github.com/yourteam/satellite-telemetry
+After=network-online.target
+Wants=network-online.target
+Before=ground-station-api.service anomaly-detector.service
+
+[Service]
+Type=simple
+User=telemetry
+Group=telemetry
+WorkingDirectory=/Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-b
+ExecStart=/Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-b/venv/bin/python /Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-b/app.py
+Restart=always
+RestartSec=5
+StartLimitInterval=60s
+StartLimitBurst=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telemetry-parser
+
+# Security hardening
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

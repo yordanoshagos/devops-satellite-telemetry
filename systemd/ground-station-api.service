@@ -1,0 +1,29 @@
+[Unit]
+Description=Ground Station API - Public Satellite Telemetry Gateway
+Documentation=https://github.com/yourteam/satellite-telemetry
+After=network-online.target telemetry-parser.service anomaly-detector.service
+Requires=telemetry-parser.service anomaly-detector.service
+
+[Service]
+Type=simple
+User=groundstation
+Group=groundstation
+WorkingDirectory=/Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-a
+
+# Wait for dependencies to be ready before starting
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do curl -s http://telemetry-parser:3002/health > /dev/null && curl -s http://anomaly-detector:3003/health > /dev/null && exit 0; sleep 2; done; exit 1'
+ExecStart=/Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-a/venv/bin/python /Users/yordanostesfayhagos/devops-lab/devops-satellite-telemetry/service-a/app.py
+
+Restart=always
+RestartSec=5
+StartLimitInterval=60s
+StartLimitBurst=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ground-station-api
+
+# Security hardening
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
