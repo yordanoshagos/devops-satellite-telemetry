@@ -4,6 +4,19 @@ A production-style microservices pipeline that simulates a satellite ground stat
 
 ---
 
+## ⚠️ IMPORTANT: Run `install.sh` Before Testing
+
+This project requires systemd services and `/etc/hosts` configuration. **You MUST run the install script before testing any endpoints.**
+
+```bash
+# After cloning, run this FIRST:
+sudo bash install.sh
+```
+
+**Skipping this step will cause `NameResolutionError` when services try to communicate.**
+
+---
+
 ## 📋 Table of Contents
 
 - [Architecture Overview](#architecture-overview)
