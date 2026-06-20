@@ -226,7 +226,10 @@ This will:
 - Configure Nginx reverse proxy
 - Set up firewall rules (port 80 public, 3002/3003 blocked)
 - Register and start systemd services
-- Add service discovery hostnames
+- Add service discovery hostnames to `/etc/hosts`
+- **Add hostnames to cloud-init template** (if cloud-init is installed) for reboot persistence
+
+> **Note on Reboot Persistence:** On cloud VMs with `cloud-init`, `/etc/hosts` is overwritten on every boot. The `install.sh` script detects this and also adds entries to `/etc/cloud/templates/hosts.debian.tmpl` so your service discovery survives reboots.
 
 ### 3. Verify Deployment
 

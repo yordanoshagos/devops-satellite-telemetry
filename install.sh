@@ -130,6 +130,29 @@ if ! grep -q "ground-station-api" /etc/hosts; then
     echo -e "  ${GREEN}✓${NC} Added ground-station-api to /etc/hosts"
 fi
 
+# Also add to cloud-init template if it exists (for reboot persistence)
+if [ -d "/etc/cloud/templates" ]; then
+    CLOUD_HOSTS="/etc/cloud/templates/hosts.debian.tmpl"
+    if [ -f "$CLOUD_HOSTS" ]; then
+        if ! grep -q "telemetry-parser" "$CLOUD_HOSTS"; then
+            echo "127.0.0.1 telemetry-parser" >> "$CLOUD_HOSTS"
+            echo -e "  ${GREEN}✓${NC} Added telemetry-parser to cloud-init template"
+        fi
+        if ! grep -q "anomaly-detector" "$CLOUD_HOSTS"; then
+            echo "127.0.0.1 anomaly-detector" >> "$CLOUD_HOSTS"
+            echo -e "  ${GREEN}✓${NC} Added anomaly-detector to cloud-init template"
+        fi
+        if ! grep -q "ground-station-api" "$CLOUD_HOSTS"; then
+            echo "127.0.0.1 ground-station-api" >> "$CLOUD_HOSTS"
+            echo -e "  ${GREEN}✓${NC} Added ground-station-api to cloud-init template"
+        fi
+    else
+        echo -e "  ${BLUE}ℹ${NC} cloud-init template not found, skipping (VM may not use cloud-init)"
+    fi
+else
+    echo -e "  ${BLUE}ℹ${NC} cloud-init not installed, /etc/hosts entries will persist on reboot"
+fi
+
 echo -e "${GREEN}✅ Service discovery configured${NC}"
 
 # =============================================================================
