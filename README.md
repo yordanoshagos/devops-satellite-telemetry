@@ -4,7 +4,7 @@ A production-style microservices pipeline that simulates a satellite ground stat
 
 ---
 
-## ⚠️ IMPORTANT: Run `install.sh` Before Testing
+## ⚠️ IMPORTANT: Run `install.sh` Before Testing (VM Deployment)
 
 This project requires systemd services and `/etc/hosts` configuration. **You MUST run the install script before testing any endpoints.**
 
@@ -15,6 +15,8 @@ sudo bash install.sh
 
 **Skipping this step will cause `NameResolutionError` when services try to communicate.**
 
+> **Prefer Docker Compose?** See [Running with Docker Compose](#-running-with-docker-compose) for a containerized alternative that requires no `install.sh` or `/etc/hosts` setup.
+
 ---
 
 ## 📋 Table of Contents
@@ -22,6 +24,7 @@ sudo bash install.sh
 - [Architecture Overview](#architecture-overview)
 - [Quick Start (Run Locally)](#quick-start-run-locally)
 - [Full Deployment (Production)](#full-deployment-production)
+- [Running with Docker Compose](#-running-with-docker-compose)
 - [API Reference](#api-reference)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
@@ -228,8 +231,11 @@ This will:
 - Register and start systemd services
 - Add service discovery hostnames to `/etc/hosts`
 - **Add hostnames to cloud-init template** (if cloud-init is installed) for reboot persistence
+- **Implement readiness gate**: Service A polls B and C health endpoints before starting
 
 > **Note on Reboot Persistence:** On cloud VMs with `cloud-init`, `/etc/hosts` is overwritten on every boot. The `install.sh` script detects this and also adds entries to `/etc/cloud/templates/hosts.debian.tmpl` so your service discovery survives reboots.
+
+> **Note on Readiness Gate:** Service A's systemd unit includes an `ExecStartPre` script that polls Service B and C health endpoints up to 30 times (60 seconds total) before starting. This ensures Service A never accepts requests until its dependencies are actually ready.
 
 ### 3. Verify Deployment
 
@@ -286,6 +292,148 @@ sudo systemctl enable telemetry-parser
 
 # Disable auto-start
 sudo systemctl disable telemetry-parser
+```
+
+---
+
+## API Reference
+
+## 🐳 Running with Docker Compose
+
+A containerized alternative to the VM/systemd deployment. No `install.sh`, `/etc/hosts`, or firewall configuration is required.
+
+### Prerequisites
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+
+### Start the System
+```bash
+# Build and start all services
+docker compose up --build -d
+
+# Verify all containers are running
+docker compose ps
+```
+
+### Test the Public Route
+```bash
+curl -i http://localhost/health
+curl -i http://localhost/nginx-health
+```
+
+### Test the Full Pipeline
+```bash
+curl -X POST http://localhost/telemetry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "satellite_id": "SAT-001",
+    "mission_id": "MISSION-ALPHA-7",
+    "timestamp": "2026-06-18T09:30:00Z",
+    "telemetry_frame": {
+      "battery_voltage": 14.2,
+      "solar_panel_temp": 45.3,
+      "gyro_x": 0.01,
+      "gyro_y": -0.02,
+      "gyro_z": 0.00,
+      "signal_strength_dbm": -85,
+      "downlink_frequency": 437.5
+    }
+  }'
+```
+
+### Prove B and C Are Internal Only
+```bash
+# These should fail (connection refused or timeout)
+curl -i --connect-timeout 3 http://localhost:3002/health
+curl -i --connect-timeout 3 http://localhost:3003/health
+```
+
+### View Logs
+```bash
+# All services
+docker compose logs
+
+# Specific service
+docker compose logs ground-station-api
+docker compose logs telemetry-parser
+docker compose logs anomaly-detector
+docker compose logs nginx
+```
+
+### Stop and Restart a Service
+```bash
+# Stop Telemetry Parser
+docker compose stop telemetry-parser
+
+# Start it again
+docker compose start telemetry-parser
+
+# Restart Ground Station API
+docker compose restart ground-station-api
+```
+
+### Shut Everything Down
+```bash
+docker compose down
+```
+
+### Trace a Request
+```bash
+# Send a request with a known ID
+curl -X POST http://localhost/telemetry \
+  -H "Content-Type: application/json" \
+  -H "X-Request-ID: demo-container-001" \
+  -d '{
+    "satellite_id": "SAT-001",
+    "mission_id": "MISSION-ALPHA-7",
+    "timestamp": "2026-06-18T09:30:00Z",
+    "telemetry_frame": {
+      "battery_voltage": 14.2,
+      "solar_panel_temp": 45.3,
+      "gyro_x": 0.01,
+      "gyro_y": -0.02,
+      "gyro_z": 0.00,
+      "signal_strength_dbm": -85,
+      "downlink_frequency": 437.5
+    }
+  }'
+
+# Trace it through logs
+docker compose logs | grep demo-container-001
+```
+
+### Failure and Recovery Test
+```bash
+# Stop Telemetry Parser
+docker compose stop telemetry-parser
+
+# Send request (should fail gracefully)
+curl -X POST http://localhost/telemetry \
+  -H "Content-Type: application/json" \
+  -H "X-Request-ID: fail-test-001" \
+  -d '{
+    "satellite_id": "SAT-001",
+    "mission_id": "MISSION-ALPHA-7",
+    "timestamp": "2026-06-18T09:30:00Z",
+    "telemetry_frame": {
+      "battery_voltage": 14.2,
+      "solar_panel_temp": 45.3,
+      "gyro_x": 0.01,
+      "gyro_y": -0.02,
+      "gyro_z": 0.00,
+      "signal_strength_dbm": -85,
+      "downlink_frequency": 437.5
+    }
+  }'
+
+# Check logs
+docker compose logs ground-station-api
+
+# Recover
+docker compose start telemetry-parser
+
+# Verify recovery
+curl -i http://localhost/health
 ```
 
 ---
@@ -370,6 +518,106 @@ curl -X POST http://localhost/telemetry \
 
 ---
 
+## 📦 Proof Pack for Reviewers
+
+This section provides command output that proves the system works as designed. Run these commands and compare with the expected output.
+
+### 1. Service Health Proof
+
+```bash
+sudo systemctl status telemetry-parser anomaly-detector ground-station-api --no-pager
+```
+
+**Expected:** All three services show `Active: active (running)`
+
+### 2. Readiness Gate Proof
+
+```bash
+sudo journalctl -u ground-station-api -n 5 --no-pager
+```
+
+**Expected:** Lines showing "Waiting for dependencies to be ready..." followed by "Dependencies ready, starting Service A"
+
+### 3. End-to-End Flow Proof
+
+```bash
+curl -X POST http://localhost/telemetry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "satellite_id": "SAT-001",
+    "mission_id": "MISSION-ALPHA-7",
+    "timestamp": "2026-06-18T09:30:00Z",
+    "telemetry_frame": {
+      "battery_voltage": 14.2,
+      "solar_panel_temp": 45.3,
+      "gyro_x": 0.01,
+      "gyro_y": -0.02,
+      "gyro_z": 0.00,
+      "signal_strength_dbm": -85,
+      "downlink_frequency": 437.5
+    }
+  }'
+```
+
+**Expected:** `{"status":"accepted","ground_station_id":"GS-Nairobi-1","processing_request_id":"req-...","satellite_id":"SAT-001","message":"Telemetry frame queued for processing"}`
+
+### 4. Request Tracing Proof
+
+```bash
+# Replace req-XXXXXX with actual request ID from step 3
+sudo bash scripts/trace-request.sh req-XXXXXX
+```
+
+**Expected:** Colored output showing the request through all 3 services with the same `processing_request_id`
+
+### 5. Network Security Proof
+
+```bash
+# From the VM itself (should work)
+curl http://localhost:3002/health
+
+# From another machine (should fail - timeout or connection refused)
+curl --connect-timeout 3 http://<VM_IP>:3002/health
+```
+
+### 6. Reboot Recovery Proof
+
+```bash
+# Reboot the VM
+sudo reboot
+
+# After SSH back in, verify services auto-started
+sudo systemctl status telemetry-parser anomaly-detector ground-station-api
+curl http://localhost/health
+```
+
+**Expected:** All services running, health endpoint responds
+
+### 7. Failure Recovery Proof
+
+```bash
+# Stop Service B
+sudo systemctl stop telemetry-parser
+
+# Check Service A handles it gracefully
+curl -X POST http://localhost/telemetry \
+  -H "Content-Type: application/json" \
+  -d '{"satellite_id":"SAT-001","mission_id":"MISSION-ALPHA-7","timestamp":"2026-06-18T09:30:00Z","telemetry_frame":{"battery_voltage":14.2,"solar_panel_temp":45.3,"gyro_x":0.01,"gyro_y":-0.02,"gyro_z":0.00,"signal_strength_dbm":-85,"downlink_frequency":437.5}}'
+
+# Expected: HTTP 502 with "Telemetry parser unreachable"
+
+# Restart Service B
+sudo systemctl start telemetry-parser
+sleep 3
+sudo systemctl start ground-station-api
+
+# Verify recovery
+curl http://localhost:3002/health
+curl http://localhost/health
+```
+
+---
+
 ## Troubleshooting
 
 | Problem | Cause | Solution |
@@ -426,34 +674,42 @@ sudo systemctl start ground-station-api
 ```
 devops-satellite-telemetry/
 ├── README.md                          # This file
-├── install.sh                         # One-command deployment script
-├── .gitignore                         # Files to exclude from Git
+├── install.sh                         # One-command VM deployment script
+├── docker-compose.yml                 # Docker Compose orchestration
+├── .dockerignore                      # Files to exclude from Docker build context
 │
 ├── service-a/                         # Ground Station API (Port 3001)
 │   ├── app.py
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── Dockerfile                     # Container image for Service A
 │
 ├── service-b/                         # Telemetry Parser (Port 3002)
 │   ├── app.py
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── Dockerfile                     # Container image for Service B
 │
 ├── service-c/                         # Anomaly Detector (Port 3003)
 │   ├── app.py
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── Dockerfile                     # Container image for Service C
 │
 ├── nginx/
-│   └── satellite-telemetry            # Nginx site configuration
+│   ├── satellite-telemetry            # Nginx site config (VM deployment)
+│   └── nginx-docker.conf             # Nginx config (Docker deployment)
 │
 ├── systemd/                           # systemd service definitions
 │   ├── ground-station-api.service
 │   ├── telemetry-parser.service
 │   └── anomaly-detector.service
 │
-└── scripts/                           # Testing and utility scripts
-    ├── test-end-to-end.sh
-    ├── trace-request.sh
-    ├── generate-telemetry.sh
-    └── configure-firewall.sh
+├── scripts/                           # Testing and utility scripts
+│   ├── test-end-to-end.sh
+│   ├── trace-request.sh
+│   ├── generate-telemetry.sh
+│   └── configure-firewall.sh
+│
+└── docs/                              # Documentation and validation
+    └── CONTAINER_VALIDATION.md        # Docker Compose validation evidence
 ```
 
 ---
@@ -465,6 +721,9 @@ devops-satellite-telemetry/
 | **Yordanos** | Project Lead, Service A, Integration | `service-a/`, `nginx/`, `systemd/`, `install.sh`, `README.md` |
 | **Member 2** | Service B — Telemetry Parser | `service-b/` |
 | **Member 3** | Service C — Anomaly Detector, Scripts | `service-c/`, `scripts/` |
+| **Member 4** | Docker Compose & Documentation | `docker-compose.yml`, `.dockerignore`, `nginx/nginx-docker.conf`, `docs/CONTAINER_VALIDATION.md`, `README.md` (Docker section) |
+
+---
 
 ---
 
@@ -478,6 +737,6 @@ This project was created for educational purposes as part of a DevOps/Systems En
 
 - All services produce structured JSON logs with `processing_request_id` for request tracing
 - The same `processing_request_id` propagates through Service A → B → C → A callback
-- Internal services (B, C) are blocked from external access by firewall
-- Services restart automatically on crash via systemd
-- Nginx is the only public entry point (port 80)
+- Internal services (B, C) are blocked from external access by firewall (VM) or Docker network isolation (containers)
+- Services restart automatically on crash via systemd (`Restart=always`) or Docker Compose (`restart: unless-stopped`)
+- Nginx is the only public entry point (port 80) in both VM and Docker deployments

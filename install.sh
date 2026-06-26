@@ -174,8 +174,8 @@ echo -e "${YELLOW}🌐 Step 8/10: Configuring Nginx reverse proxy...${NC}"
 rm -f /etc/nginx/sites-enabled/default
 
 # Copy our configuration
-cp "$INSTALL_DIR/nginx/satellite-telemetry" /etc/nginx/sites-available/
-ln -sf /etc/nginx/sites-available/satellite-telemetry /etc/nginx/sites-enabled/
+cp "$INSTALL_DIR/nginx/satellite-telemetry.conf" /etc/nginx/sites-available/
+ln -sf /etc/nginx/sites-available/satellite-telemetry.conf /etc/nginx/sites-enabled/
 
 # Test Nginx configuration
 nginx -t

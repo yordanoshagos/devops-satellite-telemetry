@@ -10,8 +10,9 @@ User=groundstation
 Group=groundstation
 WorkingDirectory=/opt/devops-satellite-telemetry/service-a
 
-# Wait for dependencies to be ready before starting
-ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do curl -s http://telemetry-parser:3002/health > /dev/null && curl -s http://anomaly-detector:3003/health > /dev/null && exit 0; sleep 2; done; exit 1'
+# Readiness gate: poll Service B and C health endpoints before starting
+# This ensures Service A doesn't accept requests until dependencies are ready
+ExecStartPre=/bin/bash -c 'echo "[$(date)] Waiting for dependencies to be ready..."; for i in $(seq 1 30); do if curl -s http://telemetry-parser:3002/health > /dev/null 2>&1 && curl -s http://anomaly-detector:3003/health > /dev/null 2>&1; then echo "[$(date)] Dependencies ready, starting Service A"; exit 0; fi; echo "[$(date)] Attempt $i/30 - dependencies not ready, retrying in 2s..."; sleep 2; done; echo "[$(date)] ERROR: Dependencies failed to become ready after 60s"; exit 1'
 ExecStart=/opt/devops-satellite-telemetry/service-a/venv/bin/python /opt/devops-satellite-telemetry/service-a/app.py
 
 Restart=always
