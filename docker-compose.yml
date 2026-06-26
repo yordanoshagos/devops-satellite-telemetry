@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx-docker.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - ground-station-api
+    networks:
+      - satellite-net
+    restart: unless-stopped
+
+  ground-station-api:
+    build:
+      context: ./service-a
+    container_name: ground-station-api
+    environment:
+      - TELEMETRY_PARSER_URL=http://telemetry-parser:3002/parse
+      - ANOMALY_DETECTOR_URL=http://anomaly-detector:3003/analyze
+    networks:
+      - satellite-net
+    restart: unless-stopped
+
+  telemetry-parser:
+    build:
+      context: ./service-b
+    container_name: telemetry-parser
+    environment:
+      - ANOMALY_DETECTOR_URL=http://anomaly-detector:3003/analyze
+    networks:
+      - satellite-net
+    restart: unless-stopped
+
+  anomaly-detector:
+    build:
+      context: ./service-c
+    container_name: anomaly-detector
+    environment:
+      - GROUND_STATION_CALLBACK_URL=http://ground-station-api:3001/callback
+    networks:
+      - satellite-net
+    restart: unless-stopped
+
+networks:
+  satellite-net:
+    driver: bridge
