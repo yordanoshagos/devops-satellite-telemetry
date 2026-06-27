@@ -208,6 +208,56 @@ def parse_telemetry():
             message="Telemetry parsing completed successfully"
         )
 
+        # Forward parsed data to Anomaly Detector (Service C)
+        analyze_payload = {
+            "processing_request_id": processing_request_id,
+            "satellite_id": satellite_id,
+            "mission_id": mission_id,
+            "parsed_data": parsed_data
+        }
+
+        log_event(
+            event="forward_to_detector",
+            outcome="in_progress",
+            processing_request_id=processing_request_id,
+            satellite_id=satellite_id,
+            message=f"Forwarding to anomaly detector at {ANOMALY_DETECTOR_URL}"
+        )
+
+        try:
+            detector_response = requests.post(
+                ANOMALY_DETECTOR_URL,
+                json=analyze_payload,
+                timeout=10,
+                headers={"X-Request-ID": processing_request_id}
+            )
+            detector_response.raise_for_status()
+            detector_data = detector_response.json()
+
+            log_event(
+                event="detector_response_received",
+                outcome="success",
+                processing_request_id=processing_request_id,
+                satellite_id=satellite_id,
+                message=f"Detector responded: {detector_data.get('anomaly_status')}"
+            )
+
+        except requests.exceptions.RequestException as e:
+            log_event(
+                event="forward_to_detector",
+                outcome="failure",
+                processing_request_id=processing_request_id,
+                satellite_id=satellite_id,
+                message=f"Failed to reach anomaly detector: {str(e)}",
+                level=logging.ERROR
+            )
+            return jsonify({
+                "status": "error",
+                "processing_request_id": processing_request_id,
+                "satellite_id": satellite_id,
+                "message": f"Anomaly detector unreachable: {str(e)}"
+            }), 502
+
         return jsonify({
             "status": "parsed",
             "processing_request_id": processing_request_id,
