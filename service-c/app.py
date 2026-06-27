@@ -241,7 +241,12 @@ def analyze_telemetry():
             )
             return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
 
-        processing_request_id = payload.get("processing_request_id", "UNKNOWN")
+        # Get the request ID from the incoming header if present
+        incoming_request_id = request.headers.get("X-Request-ID")
+        if incoming_request_id:
+            processing_request_id = incoming_request_id
+        else:
+            processing_request_id = payload.get("processing_request_id", "UNKNOWN")
         satellite_id = payload.get("satellite_id", "UNKNOWN")
         mission_id = payload.get("mission_id", "UNKNOWN")
         parsed_data = payload.get("parsed_data", {})
