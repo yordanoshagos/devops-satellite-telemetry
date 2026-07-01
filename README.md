@@ -737,9 +737,9 @@ devops-satellite-telemetry/
 | Member | Role | Files |
 |--------|------|-------|
 | **Yordanos** | Project Lead, Service A, Integration | `service-a/`, `nginx/`, `systemd/`, `install.sh`, `README.md` |
-| **Member 2** | Service B — Telemetry Parser | `service-b/` |
-| **Member 3** | Service C — Anomaly Detector, Scripts | `service-c/`, `scripts/` |
-| **Member 4** | Docker Compose & Documentation | `docker-compose.yml`, `.dockerignore`, `nginx/nginx-docker.conf`, `docs/CONTAINER_VALIDATION.md`, `README.md` (Docker section) |
+| **Saloi** | Service B — Telemetry Parser | `service-b/` |
+| **Berissa** | Service C — Anomaly Detector, Scripts | `service-c/`, `scripts/` |
+| **Arsema** | Docker Compose & Documentation | `docker-compose.yml`, `.dockerignore`, `nginx/nginx-docker.conf`, `docs/CONTAINER_VALIDATION.md`, `README.md` (Docker section) |
 
 ---
 
