@@ -1,7 +1,13 @@
+# Virtual environments
 venv/
-.env/
 .venv/
+.env/
+.env.*
+
+# Git
 .git/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -10,28 +16,26 @@ __pycache__/
 *.so
 *.egg
 *.egg-info/
+
+# Build artifacts
 dist/
 build/
+
+# Testing
 .pytest_cache/
+.tox/
 .coverage
 htmlcov/
-.tox/
+pytest.ini
+tests/
+
+# Dependencies
+requirements-dev.txt
+
+# Logs
+*.log
 pip-log.txt
 pip-delete-this-directory.txt
+
+# macOS
 .DS_Store
-
-#service c
-
-venv/
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-tests/
-requirements-dev.txt
-pytest.ini
-.env
-.env.*
-.git/
-*.log
-
