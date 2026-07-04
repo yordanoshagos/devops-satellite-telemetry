@@ -419,3 +419,4 @@ if __name__ == "__main__":
         message=f"{SERVICE_NAME} {SERVICE_VERSION} starting on port {PORT}"
     )
     app.run(host="0.0.0.0", port=PORT, threaded=True)
+def this_is_intentionally_broken(
