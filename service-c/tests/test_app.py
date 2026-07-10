@@ -97,3 +97,27 @@ def test_analyze_endpoint_rejects_empty_payload():
     client = app_module.app.test_client()
     resp = client.post("/analyze", json={})
     assert resp.status_code == 400
+
+
+def test_metrics_endpoint_exposes_prometheus_metrics():
+    client = app_module.app.test_client()
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "http_requests_total" in body
+    assert "service_up" in body
+
+
+def test_lab_fail_returns_500():
+    client = app_module.app.test_client()
+    resp = client.get("/fail")
+    assert resp.status_code == 500
+    assert resp.get_json()["lab_only"] is True
+
+
+def test_lab_slow_returns_200():
+    # LAB_SLOW_SECONDS is 0 under test (see conftest), so this is fast.
+    client = app_module.app.test_client()
+    resp = client.get("/slow")
+    assert resp.status_code == 200
+    assert resp.get_json()["lab_only"] is True
