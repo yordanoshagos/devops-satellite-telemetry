@@ -85,3 +85,31 @@ def test_parse_endpoint_returns_502_when_detector_unreachable(mock_post):
         "telemetry_frame": valid_frame(),
     })
     assert resp.status_code == 502
+
+
+def test_metrics_endpoint_exposes_prometheus_metrics():
+    client = app_module.app.test_client()
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "http_requests_total" in body
+    assert "http_request_duration_seconds" in body
+
+
+@patch("app.requests.get")
+def test_lab_slow_calls_downstream_and_returns_200(mock_get):
+    mock_get.return_value = Mock(status_code=200, json=lambda: {"service": "anomaly-detector"})
+    client = app_module.app.test_client()
+    resp = client.get("/slow")
+    assert resp.status_code == 200
+    assert resp.get_json()["lab_only"] is True
+    mock_get.assert_called_once()
+
+
+@patch("app.requests.get")
+def test_lab_fail_propagates_500(mock_get):
+    mock_get.return_value = Mock(status_code=500, json=lambda: {"error": "injected_failure"})
+    client = app_module.app.test_client()
+    resp = client.get("/fail")
+    assert resp.status_code == 500
+    assert resp.get_json()["error"] == "injected_failure"

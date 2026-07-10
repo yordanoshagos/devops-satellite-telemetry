@@ -81,9 +81,11 @@ jobs:
         run: docker compose build --pull
 
       # `--wait` blocks until every service reports healthy (via each
-      # service's HEALTHCHECK)
+      # service's HEALTHCHECK). Timeout raised because the compose file now also
+      # pulls/starts the observability stack (prometheus, grafana, jaeger, loki,
+      # promtail, alertmanager, cadvisor) alongside the app services.
       - name: Start Compose stack (wait for healthy)
-        run: docker compose up -d --wait --wait-timeout 90
+        run: docker compose up -d --wait --wait-timeout 180
 
       - name: Show running services
         run: docker compose ps
