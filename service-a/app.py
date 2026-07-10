@@ -338,12 +338,10 @@ def receive_telemetry():
                 "message": f"Telemetry parser unreachable: {str(e)}"
             }), 502
 
-        # Forward parsed data to Anomaly Detector (Service C)
-        # This is now done by Service B, not directly by Service A
-        # Service B will forward to C and C will callback to A
-        # We wait for the callback from Service C (in this simplified version, we return immediately)
-        # In production, this would be async with webhook or polling
-        request_store[processing_request_id]["status"] = "awaiting_callback"
+        # B forwards to C synchronously; C may callback before this handler resumes.
+        # Do not overwrite a status the callback handler already set to "completed".
+        if request_store[processing_request_id].get("status") != "completed":
+            request_store[processing_request_id]["status"] = "awaiting_callback"
 
         duration_ms = int((time.time() - start_time) * 1000)
 
