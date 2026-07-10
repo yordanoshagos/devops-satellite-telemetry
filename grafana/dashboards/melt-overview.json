@@ -69,7 +69,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "up{job=~\"ground-station-api|telemetry-parser|anomaly-detector\"}",
+          "expr": "up{job=~\"service-a|service-b|service-c\"}",
           "legendFormat": "{{job}}",
           "range": true,
           "refId": "A"
