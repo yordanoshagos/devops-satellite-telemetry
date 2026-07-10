@@ -27,6 +27,7 @@ sudo bash install.sh
 - [Quick Start (Run Locally)](#quick-start-run-locally)
 - [Full Deployment (Production)](#full-deployment-production)
 - [Running with Docker Compose](#-running-with-docker-compose)
+- [Observability (MELT) Stack](#-observability-melt-stack)
 - [CI/CD Pipeline](#-cicd-pipeline)
 - [Container CI/CD Deployment](#container-cicd-deployment)
 - [API Reference](#api-reference)
@@ -458,6 +459,122 @@ curl -i http://localhost/health
 
 ---
 
+## 🔭 Observability (MELT) Stack
+
+`docker compose up --build -d` now starts the application **and** a full MELT
+operating layer (Metrics, Events, Logs, Traces) around it. See
+[`docs/architecture.md`](docs/architecture.md) for the full telemetry flow and
+[`jaeger/README.md`](jaeger/README.md) for the tracing deep-dive.
+
+### What was added
+
+| Signal | Tool | How it works |
+|--------|------|--------------|
+| **Metrics** | Prometheus (+ cAdvisor) | Each service exposes `/metrics` (`http_requests_total`, `http_request_duration_seconds`, `http_errors_total`, `service_up`). Prometheus scrapes by compose service name into a named volume. |
+| **Logs** | Loki + Promtail | Services log structured JSON to stdout with `request_id` and `trace_id`; Promtail ships them to Loki; Grafana shows them. |
+| **Traces** | Jaeger + OpenTelemetry | Flask + `requests` are auto-instrumented; trace context propagates A → B → C → A as one trace. |
+| **Events** | Structured logs + benchmark report | `service_startup`, `lab_slow`, `lab_fail`, load-test start/stop, alert firing. |
+| **Alerts** | Prometheus + Alertmanager | 3 rules in [`alert-rules.yml`](alert-rules.yml): ServiceDown, HighErrorRate, HighLatencyP95. |
+| **View** | Grafana | One dashboard: up/down, request rate, error rate, p95 latency, alert state, logs. |
+
+### Access each UI
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| Gateway (Service A) | http://localhost | Public entry point |
+| **Grafana** | http://localhost:3000 | Login `admin` / `admin` → dashboard **"MELT Operating View"** |
+| **Prometheus** | http://localhost:9090 | `/targets` (scrape health), `/alerts` (alert state) |
+| **Jaeger** | http://localhost:16686 | Search traces by service |
+| **Alertmanager** | http://localhost:9093 | Routed alerts |
+| **cAdvisor** | http://localhost:8080 | Per-container metrics |
+
+> Loki is intentionally **not** published to the host — Grafana queries it over
+> the internal `observability` network.
+
+### Start / stop
+
+```bash
+docker compose up --build -d      # start app + observability
+docker compose ps                 # all services should be Up / healthy
+docker compose down               # stop (add -v to also wipe metric/log volumes)
+```
+
+### Service instrumentation endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Health + dependency status |
+| `/metrics` | GET | Prometheus metrics |
+| `/slow` | GET | **LAB-ONLY** inject latency (A → B → C all sleep) |
+| `/fail` | GET | **LAB-ONLY** inject a 500 across the pipeline |
+
+### How to view metrics
+
+```bash
+# Raw metrics from the gateway service
+curl http://localhost/metrics | grep http_requests_total
+
+# In Prometheus (http://localhost:9090), try:
+#   sum by (service) (rate(http_requests_total[1m]))          # request rate
+#   sum by (service) (rate(http_errors_total[2m]))            # error rate
+#   histogram_quantile(0.95, sum by (service,le) (rate(http_request_duration_seconds_bucket[5m])))
+```
+
+### How to view traces
+
+```bash
+# Send a request, then open Jaeger and search service "ground-station-api"
+curl -X POST http://localhost/telemetry -H "Content-Type: application/json" \
+  -d '{"satellite_id":"SAT-001","mission_id":"M","telemetry_frame":{"battery_voltage":14.2,"solar_panel_temp":45.3,"gyro_x":0,"gyro_y":0,"gyro_z":0,"signal_strength_dbm":-85,"downlink_frequency":437.5}}'
+# http://localhost:16686 -> one trace spans ground-station-api -> telemetry-parser -> anomaly-detector
+```
+
+### How to view logs
+
+```bash
+# Terminal (structured JSON, includes request_id + trace_id):
+docker compose logs ground-station-api | tail
+
+# Grafana: "MELT Operating View" -> Service Logs panel, or Explore -> Loki:
+#   {service="ground-station-api"} |= "trace_id"
+```
+
+### How to run load tests
+
+```bash
+scripts/load-test.sh normal     # 500 req  / 10 VUs  - baseline
+scripts/load-test.sh stress     # 2000 req / 50 VUs  - pushes p95 up
+scripts/load-test.sh failure    # 300 req to /fail   - trips the error alert
+# Uses k6 (scripts/load-test.js) if installed, otherwise a curl fallback.
+```
+
+See [`docs/benchmark-report.md`](docs/benchmark-report.md) for scenarios and results.
+
+### How to trigger a controlled failure
+
+```bash
+scripts/simulate-failure.sh down      # Failure A: stop service-b -> ServiceDown alert
+scripts/simulate-failure.sh slow      # Failure B: /slow -> HighLatencyP95 alert
+scripts/simulate-failure.sh error     # Failure C: /fail -> HighErrorRate alert
+scripts/simulate-failure.sh recover   # restart + confirm healthy
+```
+
+Each command prints exactly where to look for the MELT evidence.
+
+### How to confirm alerts
+
+```bash
+# 1. Trigger, e.g.:
+scripts/simulate-failure.sh error
+# 2. Watch the alert move pending -> firing (~1m):
+open http://localhost:9090/alerts          # or curl:
+curl -s http://localhost:9090/api/v1/alerts | python3 -m json.tool
+# 3. See it in Grafana "Alert State" panel and Alertmanager (http://localhost:9093)
+# 4. Confirm normal: stop the load; the alert auto-resolves as the rate drops.
+```
+
+---
+
 ## 🚀 CI/CD Pipeline
 
 GitHub Actions builds, tests, verifies, and publishes container images. Defined in [`.github/workflows/container-ci-cd.yml`](.github/workflows/container-ci-cd.yml).
@@ -763,10 +880,21 @@ sudo systemctl start ground-station-api
 devops-satellite-telemetry/
 ├── README.md                          # This file
 ├── install.sh                         # One-command VM deployment script
-├── docker-compose.yml                 # Docker Compose orchestration (local build)
+├── docker-compose.yml                 # Docker Compose orchestration (app + observability)
 ├── docker-compose.prod.yml            # Docker Compose using published Docker Hub images
 ├── .env.example                       # Template for DOCKERHUB_USERNAME/APP_NAME/IMAGE_TAG
 ├── .dockerignore                      # Files to exclude from Docker build context
+│
+├── prometheus.yml                     # Prometheus scrape config (metrics)
+├── alert-rules.yml                    # Prometheus alert rules (ServiceDown/Error/Latency)
+├── grafana/                           # Grafana provisioning + MELT dashboard
+│   ├── provisioning/datasources/      # Prometheus + Loki + Jaeger datasources
+│   ├── provisioning/dashboards/       # Dashboard provider
+│   └── dashboards/melt-overview.json  # The MELT operating view
+├── loki/loki-config.yml               # Loki (log storage) config
+├── promtail/promtail-config.yml       # Promtail (log shipper) config
+├── alertmanager/alertmanager.yml      # Alertmanager routing config
+├── jaeger/README.md                   # Tracing deep-dive + trace demo
 │
 ├── .github/workflows/
 │   └── container-ci-cd.yml            # Build, verify, and publish images on push/PR
@@ -812,22 +940,34 @@ devops-satellite-telemetry/
 │   ├── trace-request.sh
 │   ├── generate-telemetry.sh
 │   ├── configure-firewall.sh
+│   ├── load-test.js                   # k6 load test (normal/stress/failure)
+│   ├── load-test.sh                   # Load test wrapper (k6 or curl fallback)
+│   ├── simulate-failure.sh            # Trigger a controlled failure + MELT evidence
 │   └── deploy.sh                      # Manual deploy: ./scripts/deploy.sh sha-<hash>
 │
 └── docs/                              # Documentation and validation
-    └── CONTAINER_VALIDATION.md        # Docker Compose validation evidence
+    ├── CONTAINER_VALIDATION.md        # Docker Compose validation evidence
+    ├── architecture.md                # Service + telemetry (MELT) flow
+    ├── benchmark-report.md            # Load test scenarios and results
+    └── observability-work-split.md    # 4-way division of the MELT work
 ```
 
 ---
 
 ## Team
 
-| Member | Role | Files |
-|--------|------|-------|
-| **Yordanos** | Project Lead, Service A, Integration | `service-a/`, `nginx/`, `systemd/`, `install.sh`, `README.md` |
-| **Saloi** | Service B — Telemetry Parser | `service-b/` |
-| **Berissa** | Service C — Anomaly Detector, Scripts | `service-c/`, `scripts/` |
-| **Arsema** | Docker Compose & Documentation | `docker-compose.yml`, `.dockerignore`, `nginx/nginx-docker.conf`, `docs/CONTAINER_VALIDATION.md`, `README.md` (Docker section) |
+Observability (MELT) work was split **equally**, and the two pipeline-touching
+files (CI workflow, prod compose) are authored by the lighter contributors from
+last week with the heavier two reviewing.
+
+| Member | Observability (MELT) contribution (author) | Reviewed by |
+|--------|--------------------------------------------|-------------|
+| **Yordanos** | Service A instrumentation, `jaeger/README.md`, `docs/architecture.md` | Saloi |
+| **Saloi** | Service B instrumentation, `prometheus.yml`, `alert-rules.yml`, CI workflow | Arsema |
+| **Berissa** | Service C instrumentation, k6 load test + failure sim, `docs/benchmark-report.md`, `docker-compose.prod.yml` | Yordanos |
+| **Arsema** | Observability compose services, Grafana/Loki/Promtail/Alertmanager configs, README observability section | Berissa |
+
+See [`docs/observability-work-split.md`](docs/observability-work-split.md) for the full file-by-file division, review cycle, and collaboration/debugging notes.
 
 ---
 

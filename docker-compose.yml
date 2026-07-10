@@ -1,4 +1,17 @@
+# =============================================================================
+# Satellite Telemetry - local (build-from-source) compose file.
+#
+# Application services : nginx, ground-station-api (A), telemetry-parser (B),
+#                        anomaly-detector (C)
+# Observability (MELT) : jaeger (traces), prometheus (metrics), grafana (view),
+#                        alertmanager (alert routing), loki + promtail (logs),
+#                        cadvisor (container metrics)
+#
+# `docker compose up --build` starts the application AND the observability
+# stack together. See README "Observability (MELT) Stack" for URLs and demos.
+# =============================================================================
 services:
+  # ---------------------------------------------------------------- gateway --
   nginx:
     build: ./nginx
     image: nginx:1.27-alpine
@@ -20,6 +33,7 @@ services:
       retries: 3
       start_period: 5s
 
+  # ------------------------------------------------------------- service A ----
   ground-station-api:
     build:
       context: ./service-a
@@ -27,6 +41,10 @@ services:
     environment:
       - TELEMETRY_PARSER_URL=http://telemetry-parser:3002/parse
       - ANOMALY_DETECTOR_URL=http://anomaly-detector:3003/analyze
+      # MELT: export traces to Jaeger over OTLP/gRPC.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_SERVICE_NAME=ground-station-api
+      - LAB_SLOW_SECONDS=3
     depends_on:
       telemetry-parser:
         condition: service_healthy
@@ -37,30 +55,152 @@ services:
       - backend
     restart: unless-stopped
 
+  # ------------------------------------------------------------- service B ----
   telemetry-parser:
     build:
       context: ./service-b
     container_name: telemetry-parser
     environment:
       - ANOMALY_DETECTOR_URL=http://anomaly-detector:3003/analyze
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_SERVICE_NAME=telemetry-parser
+      - LAB_SLOW_SECONDS=3
     networks:
       - backend
     restart: unless-stopped
 
+  # ------------------------------------------------------------- service C ----
   anomaly-detector:
     build:
       context: ./service-c
     container_name: anomaly-detector
     environment:
       - GROUND_STATION_CALLBACK_URL=http://ground-station-api:3001/callback
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_SERVICE_NAME=anomaly-detector
+      - LAB_SLOW_SECONDS=3
     networks:
       - backend
+    restart: unless-stopped
+
+  # ============================ OBSERVABILITY (MELT) =========================
+
+  # Traces: Jaeger all-in-one. Receives OTLP spans from A/B/C and serves the UI.
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"   # Jaeger UI
+    networks:
+      - backend
+      - observability
+    restart: unless-stopped
+
+  # Metrics: Prometheus scrapes /metrics from every service and evaluates alerts.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - backend
+      - observability
+    restart: unless-stopped
+
+  # Alert routing (optional but wired): receives firing alerts from Prometheus.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # Central operating view: Grafana, provisioned with datasources + dashboard.
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # Logs: Loki stores structured logs so they are queryable inside Grafana.
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: loki
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # Logs shipper: Promtail tails container stdout and pushes JSON logs to Loki.
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: promtail
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # Container metrics: per-container CPU / memory / network for Prometheus.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - observability
     restart: unless-stopped
 
 networks:
   frontend:
   backend:
     internal: true
+  observability:
 
-
-
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:

@@ -1,0 +1,39 @@
+# Promtail discovers running containers via the Docker socket and ships their
+# stdout (our structured JSON logs) to Loki. The JSON pipeline promotes key
+# fields (service, level, request_id, trace_id) to Loki labels/structured
+# metadata so you can filter logs by trace in Grafana.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Container name (strip the leading slash) becomes the "container" label.
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: container
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: stream
+    pipeline_stages:
+      # Our services log one JSON object per line; pull out useful fields.
+      - json:
+          expressions:
+            service: service
+            level: level
+            request_id: request_id
+            trace_id: trace_id
+            event: event
+      - labels:
+          service:
+          level:
+

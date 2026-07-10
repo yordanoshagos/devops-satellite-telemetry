@@ -98,8 +98,76 @@ def test_status_endpoint_tracks_request_lifecycle(mock_post):
     assert status_resp.get_json()["status"] == "awaiting_callback"
 
 
+@patch("app.requests.post")
+def test_status_endpoint_reports_completed_when_callback_runs_during_parser_call(mock_post):
+    client = app_module.app.test_client()
+
+    def parser_triggers_sync_callback(url, **kwargs):
+        request_id = kwargs["json"]["processing_request_id"]
+        callback_resp = client.post(
+            "/callback",
+            json={
+                "processing_request_id": request_id,
+                "satellite_id": "SAT-001",
+                "anomaly_status": "nominal",
+                "anomalies_detected": [],
+            },
+        )
+        assert callback_resp.status_code == 200
+        return Mock(status_code=200, json=lambda: {"status": "parsed"})
+
+    mock_post.side_effect = parser_triggers_sync_callback
+
+    telemetry_resp = client.post(
+        "/telemetry",
+        json={
+            "satellite_id": "SAT-001",
+            "mission_id": "MISSION-ALPHA-7",
+            "telemetry_frame": {"battery_voltage": 14.2},
+        },
+    )
+    request_id = telemetry_resp.get_json()["processing_request_id"]
+
+    status_resp = client.get(f"/status/{request_id}")
+    body = status_resp.get_json()
+
+    assert status_resp.status_code == 200
+    assert body["status"] == "completed"
+    assert body["anomaly_status"] == "nominal"
+    assert body["completed_at"] is not None
+
+
 def test_status_endpoint_returns_404_for_unknown_request():
     client = app_module.app.test_client()
     resp = client.get("/status/does-not-exist")
 
     assert resp.status_code == 404
+
+
+def test_metrics_endpoint_exposes_prometheus_metrics():
+    client = app_module.app.test_client()
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "http_requests_total" in body
+    assert "http_errors_total" in body
+
+
+@patch("app.requests.get")
+def test_lab_slow_returns_200(mock_get):
+    mock_get.return_value = Mock(status_code=200, json=lambda: {"service": "telemetry-parser"})
+    client = app_module.app.test_client()
+    resp = client.get("/slow")
+    assert resp.status_code == 200
+    assert resp.get_json()["lab_only"] is True
+
+
+@patch("app.requests.get")
+def test_lab_fail_returns_500(mock_get):
+    mock_get.return_value = Mock(status_code=500, json=lambda: {"error": "injected_failure"})
+    client = app_module.app.test_client()
+    resp = client.get("/fail")
+    assert resp.status_code == 500
+    body = resp.get_json()
+    assert body["lab_only"] is True
+    assert body["error"] == "injected_failure"
