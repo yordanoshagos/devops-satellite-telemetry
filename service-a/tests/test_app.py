@@ -103,3 +103,32 @@ def test_status_endpoint_returns_404_for_unknown_request():
     resp = client.get("/status/does-not-exist")
 
     assert resp.status_code == 404
+
+
+def test_metrics_endpoint_exposes_prometheus_metrics():
+    client = app_module.app.test_client()
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "http_requests_total" in body
+    assert "http_errors_total" in body
+
+
+@patch("app.requests.get")
+def test_lab_slow_returns_200(mock_get):
+    mock_get.return_value = Mock(status_code=200, json=lambda: {"service": "telemetry-parser"})
+    client = app_module.app.test_client()
+    resp = client.get("/slow")
+    assert resp.status_code == 200
+    assert resp.get_json()["lab_only"] is True
+
+
+@patch("app.requests.get")
+def test_lab_fail_returns_500(mock_get):
+    mock_get.return_value = Mock(status_code=500, json=lambda: {"error": "injected_failure"})
+    client = app_module.app.test_client()
+    resp = client.get("/fail")
+    assert resp.status_code == 500
+    body = resp.get_json()
+    assert body["lab_only"] is True
+    assert body["error"] == "injected_failure"
