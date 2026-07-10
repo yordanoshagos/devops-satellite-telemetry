@@ -1,0 +1,21 @@
+# Minimal Alertmanager config. Prometheus is the source of truth for alert
+# rules (alert-rules.yml); Alertmanager groups/deduplicates them and could fan
+# out to Slack/Discord/email/webhook. For the lab we route everything to a
+# single default receiver so firing alerts are visible at http://localhost:9093.
+route:
+  receiver: default
+  group_by: ["alertname", "service"]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: default
+    # No external integration configured for the lab. To notify a real channel,
+    # add e.g. slack_configs / webhook_configs here.
+
+inhibit_rules:
+  # If a service is fully down, silence its (redundant) error/latency alerts.
+  - source_matchers: [severity="critical"]
+    target_matchers: [severity="warning"]
+    equal: ["service"]
