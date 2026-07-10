@@ -21,6 +21,12 @@ PORT = 3002
 
 # Service discovery
 ANOMALY_DETECTOR_URL = os.environ.get("ANOMALY_DETECTOR_URL", "http://anomaly-detector:3003/analyze")
+# Base URL of the downstream anomaly detector (strip the /analyze path) so the
+# lab /slow and /fail endpoints can propagate a trace to the next service.
+ANOMALY_DETECTOR_BASE_URL = ANOMALY_DETECTOR_URL.rsplit("/", 1)[0]
+
+# LAB-ONLY: how long the /slow endpoint sleeps before calling downstream.
+LAB_SLOW_SECONDS = float(os.environ.get("LAB_SLOW_SECONDS", "3"))
 
 app = Flask(__name__)
 app.start_time = time.time()
@@ -45,6 +51,13 @@ class JSONLogFormatter(logging.Formatter):
             "duration_ms": getattr(record, "duration_ms", None),
             "message": record.getMessage()
         }
+        # Correlate logs with the active distributed trace (MELT: Logs <-> Traces).
+        trace_id = current_trace_id()
+        if trace_id:
+            log_entry["trace_id"] = trace_id
+        # Expose processing_request_id under the generic "request_id" key too.
+        if log_entry.get("processing_request_id"):
+            log_entry["request_id"] = log_entry["processing_request_id"]
         log_entry = {k: v for k, v in log_entry.items() if v is not None}
         return json.dumps(log_entry)
 
@@ -54,6 +67,102 @@ handler.setFormatter(JSONLogFormatter())
 logger = logging.getLogger(SERVICE_NAME)
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
+
+
+# ---------------------------------------------------------------------------
+# MELT observability layer (Metrics + Traces). Added for the observability lab.
+#   - Metrics: Prometheus client exposing http_requests_total,
+#     http_request_duration_seconds, http_errors_total, service_up on /metrics.
+#   - Traces: OpenTelemetry auto-instrumentation exporting spans to Jaeger (OTLP).
+# See docs/architecture.md for the full telemetry flow.
+# ---------------------------------------------------------------------------
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+
+http_requests_total = Counter(
+    "http_requests_total",
+    "Total HTTP requests handled by the service",
+    ["service", "method", "route", "status_code"],
+)
+http_request_duration_seconds = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency in seconds",
+    ["service", "method", "route"],
+)
+http_errors_total = Counter(
+    "http_errors_total",
+    "Total HTTP responses that resulted in a 5xx error",
+    ["service", "method", "route", "status_code"],
+)
+service_up = Gauge("service_up", "1 while the service process is running", ["service"])
+service_up.labels(service=SERVICE_NAME).set(1)
+
+# OpenTelemetry tracing is best-effort: if the libraries or the Jaeger collector
+# are unavailable (e.g. running a unit test or bare local dev), the service still
+# boots and simply skips span export.
+_tracing_enabled = False
+otel_trace = None
+try:
+    if os.environ.get("OTEL_SDK_DISABLED", "false").lower() != "true":
+        from opentelemetry import trace as otel_trace
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        from opentelemetry.instrumentation.flask import FlaskInstrumentor
+        from opentelemetry.instrumentation.requests import RequestsInstrumentor
+
+        _otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+        _provider = TracerProvider(resource=Resource.create({"service.name": SERVICE_NAME}))
+        _provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(endpoint=_otlp_endpoint, insecure=True))
+        )
+        otel_trace.set_tracer_provider(_provider)
+        FlaskInstrumentor().instrument_app(app)
+        RequestsInstrumentor().instrument()
+        _tracing_enabled = True
+except Exception as _otel_err:  # pragma: no cover - tracing must never block boot
+    print(f"[otel] tracing disabled for {SERVICE_NAME}: {_otel_err}", flush=True)
+
+
+def current_trace_id():
+    """Return the active trace id as a 32-char hex string, or None if untraced."""
+    if not _tracing_enabled or otel_trace is None:
+        return None
+    try:
+        ctx = otel_trace.get_current_span().get_span_context()
+        if ctx and ctx.is_valid:
+            return format(ctx.trace_id, "032x")
+    except Exception:
+        return None
+    return None
+
+
+@app.before_request
+def _obs_start_timer():
+    request._obs_start = time.time()
+
+
+@app.after_request
+def _obs_record_metrics(response):
+    try:
+        route = request.url_rule.rule if request.url_rule else request.path
+        if route != "/metrics":
+            method = request.method
+            status = str(response.status_code)
+            elapsed = time.time() - getattr(request, "_obs_start", time.time())
+            http_requests_total.labels(SERVICE_NAME, method, route, status).inc()
+            http_request_duration_seconds.labels(SERVICE_NAME, method, route).observe(elapsed)
+            if response.status_code >= 500:
+                http_errors_total.labels(SERVICE_NAME, method, route, status).inc()
+    except Exception:  # pragma: no cover - metrics must never break a response
+        pass
+    return response
+
+
+@app.route("/metrics", methods=["GET"])
+def metrics():
+    """Prometheus scrape endpoint."""
+    return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
 
 def log_event(event, outcome, processing_request_id=None, satellite_id=None,
@@ -278,6 +387,69 @@ def parse_telemetry():
             level=logging.ERROR
         )
         return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
+
+
+@app.route("/slow", methods=["GET"])
+def lab_slow():
+    """
+    LAB-ONLY / TEST-ONLY endpoint.
+    Sleeps LAB_SLOW_SECONDS then calls the anomaly detector's /slow so a single
+    request produces a slow span in BOTH service-b and service-c in Jaeger.
+    Do NOT expose in production.
+    """
+    start_time = time.time()
+    time.sleep(LAB_SLOW_SECONDS)
+    downstream = None
+    try:
+        resp = requests.get(f"{ANOMALY_DETECTOR_BASE_URL}/slow", timeout=30)
+        downstream = resp.json()
+    except requests.exceptions.RequestException as e:
+        downstream = {"error": str(e)}
+    duration_ms = int((time.time() - start_time) * 1000)
+    log_event(
+        event="lab_slow",
+        outcome="success",
+        endpoint="/slow",
+        method="GET",
+        duration_ms=duration_ms,
+        message=f"LAB slow endpoint slept {LAB_SLOW_SECONDS}s and called detector",
+        level=logging.WARNING,
+    )
+    return jsonify({
+        "service": SERVICE_NAME,
+        "lab_only": True,
+        "slept_seconds": LAB_SLOW_SECONDS,
+        "downstream": downstream,
+    }), 200
+
+
+@app.route("/fail", methods=["GET"])
+def lab_fail():
+    """
+    LAB-ONLY / TEST-ONLY endpoint.
+    Calls the anomaly detector's /fail and propagates a 500 so the error and its
+    failed span appear across service-b and service-c. Do NOT expose in production.
+    """
+    downstream = None
+    try:
+        resp = requests.get(f"{ANOMALY_DETECTOR_BASE_URL}/fail", timeout=10)
+        downstream = resp.json()
+    except requests.exceptions.RequestException as e:
+        downstream = {"error": str(e)}
+    log_event(
+        event="lab_fail",
+        outcome="failure",
+        endpoint="/fail",
+        method="GET",
+        message="LAB fail endpoint invoked - propagating injected 500 from detector",
+        level=logging.ERROR,
+    )
+    return jsonify({
+        "service": SERVICE_NAME,
+        "lab_only": True,
+        "error": "injected_failure",
+        "downstream": downstream,
+    }), 500
 
 
 @app.errorhandler(404)

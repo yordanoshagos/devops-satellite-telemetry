@@ -1,0 +1,72 @@
+# Prometheus alert rules for the Satellite Telemetry MELT stack.
+# Full reproduction / verification steps live in docs/architecture.md
+# (Alerting flow) and the README (How to confirm alerts).
+groups:
+  
+  # Alert 1: Service Down
+  
+  - name: service-availability
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"service-.*"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          signal: metrics
+        annotations:
+          summary: "{{ $labels.job }} is DOWN"
+          description: >
+            Prometheus cannot scrape {{ $labels.job }} ({{ $labels.instance }}).
+            The target is down or unreachable for more than 30s.
+          meaning: "The service process/container is not responding to scrapes."
+          possible_causes: "Container crashed/stopped, OOM kill, bad deploy, network isolation."
+          reproduce: "docker compose stop telemetry-parser"
+          first_checks: "docker compose ps; docker compose logs telemetry-parser"
+          confirm_normal: "up{job=\"service-b\"} == 1 after docker compose start telemetry-parser"
+
+  
+  # Alert 2: High Error Rate
+
+  - name: service-errors
+    rules:
+      - alert: HighErrorRate
+        expr: sum by (service) (rate(http_errors_total[2m])) > 0.1
+        for: 1m
+        labels:
+          severity: warning
+          signal: metrics
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.service }}"
+          description: >
+            {{ $labels.service }} is returning more than 0.1 errors/sec (5xx)
+            averaged over 2m for at least 1m.
+          meaning: "A meaningful share of requests are failing with server errors."
+          possible_causes: "Downstream dependency failing, bad input, unhandled exception, /fail lab endpoint."
+          reproduce: "scripts/load-test.sh failure   (or: curl http://localhost/fail in a loop)"
+          first_checks: "Jaeger: find the failed span. Logs: grep level=ERROR for the trace_id."
+          confirm_normal: "rate(http_errors_total[2m]) returns to 0 after load stops."
+
+  # Alert 3: High Latency (p95)
+
+  - name: service-latency
+    rules:
+      - alert: HighLatencyP95
+        expr: >
+          histogram_quantile(
+            0.95,
+            sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+          signal: metrics
+        annotations:
+          summary: "High p95 latency on {{ $labels.service }}"
+          description: >
+            95th percentile request latency for {{ $labels.service }} is above
+            500ms over the last 5m for at least 1m.
+          meaning: "Requests are slow for the slowest 5% of traffic."
+          possible_causes: "Slow dependency, resource saturation, lock contention, /slow lab endpoint."
+          reproduce: "scripts/load-test.sh stress   (or: curl http://localhost/slow)"
+          first_checks: "Jaeger: open a slow trace and find which span dominates duration."
+          confirm_normal: "p95 drops back under 0.5s after the slow traffic / /slow stops."
