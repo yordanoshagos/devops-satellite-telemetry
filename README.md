@@ -477,6 +477,8 @@ GitHub Actions builds, tests, verifies, and publishes container images. Defined 
 
 **`publish`** (needs `verify-compose`, matrix over service-a/b/c) — logs into Docker Hub and pushes each service image tagged **`sha-<7-char-commit-sha>`** only (never `latest`), as `<DOCKERHUB_USERNAME>/<repo-name>-service-a` (and `-service-b`, `-service-c`), with `org.opencontainers.image.revision` and `.source` labels for traceability back to the exact commit.
 
+> **Known gap — rebuild, not promote.** `publish` rebuilds each image from the same source tree that `verify` and `verify-compose` tested, rather than promoting the exact bytes that were tested. The revision label and immutable `sha-<commit>` tag pin the image back to the tested source, but a reproducible-builds regression could in principle produce a different binary than the one that ran in CI. Promoting the artifact end-to-end would require pushing from `verify-compose` to a staging registry and re-tagging from there.
+
 ### Required repository configuration
 
 Under **Settings → Secrets and variables → Actions**:
@@ -490,8 +492,11 @@ Under **Settings → Secrets and variables → Actions**:
 
 ### Latest deployed version
 
-Commit:
+Commit (short):
 `3caff4f`
+
+Commit (full, 40-char):
+`3caff4f1d6d82b41a4440b1de0917585572df691`
 
 Image tag:
 `sha-3caff4f`

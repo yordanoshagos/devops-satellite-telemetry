@@ -1,5 +1,6 @@
 services:
   nginx:
+    build: ./nginx
     image: nginx:1.27-alpine
     container_name: nginx
     ports:
@@ -7,10 +8,17 @@ services:
     volumes:
       - ./nginx/nginx-docker.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - ground-station-api
+      ground-station-api:
+        condition: service_healthy
     networks:
       - frontend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   ground-station-api:
     build:
@@ -20,8 +28,10 @@ services:
       - TELEMETRY_PARSER_URL=http://telemetry-parser:3002/parse
       - ANOMALY_DETECTOR_URL=http://anomaly-detector:3003/analyze
     depends_on:
-      - telemetry-parser
-      - anomaly-detector
+      telemetry-parser:
+        condition: service_healthy
+      anomaly-detector:
+        condition: service_healthy
     networks:
       - frontend
       - backend

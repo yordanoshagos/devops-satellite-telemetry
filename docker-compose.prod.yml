@@ -10,35 +10,47 @@
 # can receive client traffic via nginx and call through to service-b/c.
 
 services:
-  nginx:
-    image: nginx:1.27-alpine
+   nginx:
+    # Custom nginx image published by CI — installs curl so the compose
+    # healthcheck runs. Prod is pull-only; no local build here.
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME (Docker Hub namespace)}/${APP_NAME:?Set APP_NAME (image repo prefix)}-nginx:${IMAGE_TAG:?Set IMAGE_TAG (e.g. sha-a1b2c3d)}
     container_name: nginx
     ports:
       - "80:80"
     volumes:
       - ./nginx/nginx-docker.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - ground-station-api
+      ground-station-api:
+        condition: service_healthy
     networks:
       - frontend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
-  ground-station-api:
-    image: ${DOCKERHUB_USERNAME}/${APP_NAME}-service-a:${IMAGE_TAG}
+   ground-station-api:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME (Docker Hub namespace)}/${APP_NAME:?Set APP_NAME (image repo prefix)}-service-a:${IMAGE_TAG:?Set IMAGE_TAG (e.g. sha-a1b2c3d)}
     container_name: ground-station-api
     environment:
       - TELEMETRY_PARSER_URL=http://telemetry-parser:3002/parse
       - ANOMALY_DETECTOR_URL=http://anomaly-detector:3003/analyze
     depends_on:
-      - telemetry-parser
-      - anomaly-detector
+      telemetry-parser:
+        condition: service_healthy
+      anomaly-detector:
+        condition: service_healthy
     networks:
       - frontend
       - backend
     restart: unless-stopped
 
-  telemetry-parser:
-    image: ${DOCKERHUB_USERNAME}/${APP_NAME}-service-b:${IMAGE_TAG}
+   telemetry-parser:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME (Docker Hub namespace)}/${APP_NAME:?Set APP_NAME (image repo prefix)}-service-b:${IMAGE_TAG:?Set IMAGE_TAG (e.g. sha-a1b2c3d)}
+
     container_name: telemetry-parser
     environment:
       - ANOMALY_DETECTOR_URL=http://anomaly-detector:3003/analyze
@@ -46,8 +58,8 @@ services:
       - backend
     restart: unless-stopped
 
-  anomaly-detector:
-    image: ${DOCKERHUB_USERNAME}/${APP_NAME}-service-c:${IMAGE_TAG}
+   anomaly-detector:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME (Docker Hub namespace)}/${APP_NAME:?Set APP_NAME (image repo prefix)}-service-c:${IMAGE_TAG:?Set IMAGE_TAG (e.g. sha-a1b2c3d)}
     container_name: anomaly-detector
     environment:
       - GROUND_STATION_CALLBACK_URL=http://ground-station-api:3001/callback
