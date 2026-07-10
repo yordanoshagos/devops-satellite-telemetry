@@ -25,6 +25,9 @@ GROUND_STATION_CALLBACK_URL = os.environ.get(
     "http://ground-station-api:3001/callback"
 )
 
+# LAB-ONLY: how long the /slow endpoint sleeps to simulate latency.
+LAB_SLOW_SECONDS = float(os.environ.get("LAB_SLOW_SECONDS", "3"))
+
 # Mission thresholds for anomaly detection
 THRESHOLDS = {
     "battery_voltage_v": {"min": 12.0, "max": 16.0, "critical_low": 11.0},
@@ -56,6 +59,14 @@ class JSONLogFormatter(logging.Formatter):
             "duration_ms": getattr(record, "duration_ms", None),
             "message": record.getMessage()
         }
+        # Correlate logs with the active distributed trace (MELT: Logs <-> Traces).
+        trace_id = current_trace_id()
+        if trace_id:
+            log_entry["trace_id"] = trace_id
+        # Expose processing_request_id under the generic "request_id" key too, so
+        # log tooling that expects request_id (per the PRD) can correlate as well.
+        if log_entry.get("processing_request_id"):
+            log_entry["request_id"] = log_entry["processing_request_id"]
         log_entry = {k: v for k, v in log_entry.items() if v is not None}
         return json.dumps(log_entry)
 
@@ -65,6 +76,102 @@ handler.setFormatter(JSONLogFormatter())
 logger = logging.getLogger(SERVICE_NAME)
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
+
+
+# ---------------------------------------------------------------------------
+# MELT observability layer (Metrics + Traces). Added for the observability lab.
+#   - Metrics: Prometheus client exposing http_requests_total,
+#     http_request_duration_seconds, http_errors_total, service_up on /metrics.
+#   - Traces: OpenTelemetry auto-instrumentation exporting spans to Jaeger (OTLP).
+# See docs/architecture.md for the full telemetry flow.
+# ---------------------------------------------------------------------------
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+
+http_requests_total = Counter(
+    "http_requests_total",
+    "Total HTTP requests handled by the service",
+    ["service", "method", "route", "status_code"],
+)
+http_request_duration_seconds = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency in seconds",
+    ["service", "method", "route"],
+)
+http_errors_total = Counter(
+    "http_errors_total",
+    "Total HTTP responses that resulted in a 5xx error",
+    ["service", "method", "route", "status_code"],
+)
+service_up = Gauge("service_up", "1 while the service process is running", ["service"])
+service_up.labels(service=SERVICE_NAME).set(1)
+
+# OpenTelemetry tracing is best-effort: if the libraries or the Jaeger collector
+# are unavailable (e.g. running a unit test or bare local dev), the service still
+# boots and simply skips span export.
+_tracing_enabled = False
+otel_trace = None
+try:
+    if os.environ.get("OTEL_SDK_DISABLED", "false").lower() != "true":
+        from opentelemetry import trace as otel_trace
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        from opentelemetry.instrumentation.flask import FlaskInstrumentor
+        from opentelemetry.instrumentation.requests import RequestsInstrumentor
+
+        _otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+        _provider = TracerProvider(resource=Resource.create({"service.name": SERVICE_NAME}))
+        _provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(endpoint=_otlp_endpoint, insecure=True))
+        )
+        otel_trace.set_tracer_provider(_provider)
+        FlaskInstrumentor().instrument_app(app)
+        RequestsInstrumentor().instrument()
+        _tracing_enabled = True
+except Exception as _otel_err:  # pragma: no cover - tracing must never block boot
+    print(f"[otel] tracing disabled for {SERVICE_NAME}: {_otel_err}", flush=True)
+
+
+def current_trace_id():
+    """Return the active trace id as a 32-char hex string, or None if untraced."""
+    if not _tracing_enabled or otel_trace is None:
+        return None
+    try:
+        ctx = otel_trace.get_current_span().get_span_context()
+        if ctx and ctx.is_valid:
+            return format(ctx.trace_id, "032x")
+    except Exception:
+        return None
+    return None
+
+
+@app.before_request
+def _obs_start_timer():
+    request._obs_start = time.time()
+
+
+@app.after_request
+def _obs_record_metrics(response):
+    try:
+        route = request.url_rule.rule if request.url_rule else request.path
+        if route != "/metrics":
+            method = request.method
+            status = str(response.status_code)
+            elapsed = time.time() - getattr(request, "_obs_start", time.time())
+            http_requests_total.labels(SERVICE_NAME, method, route, status).inc()
+            http_request_duration_seconds.labels(SERVICE_NAME, method, route).observe(elapsed)
+            if response.status_code >= 500:
+                http_errors_total.labels(SERVICE_NAME, method, route, status).inc()
+    except Exception:  # pragma: no cover - metrics must never break a response
+        pass
+    return response
+
+
+@app.route("/metrics", methods=["GET"])
+def metrics():
+    """Prometheus scrape endpoint."""
+    return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
 
 def log_event(event, outcome, processing_request_id=None, satellite_id=None,
@@ -381,6 +488,57 @@ def analyze_telemetry():
             level=logging.ERROR
         )
         return jsonify({"status": "error", "message": f"Internal error: {str(e)}"}), 500
+
+
+@app.route("/slow", methods=["GET"])
+def lab_slow():
+    """
+    LAB-ONLY / TEST-ONLY endpoint.
+    Sleeps for LAB_SLOW_SECONDS to simulate a slow dependency at the deepest
+    point of the pipeline. Used to prove high-latency alerts, slow spans in
+    Jaeger, and degraded p95 in the benchmark report. Do NOT expose in prod.
+    """
+    start_time = time.time()
+    time.sleep(LAB_SLOW_SECONDS)
+    duration_ms = int((time.time() - start_time) * 1000)
+    log_event(
+        event="lab_slow",
+        outcome="success",
+        endpoint="/slow",
+        method="GET",
+        duration_ms=duration_ms,
+        message=f"LAB slow endpoint slept {LAB_SLOW_SECONDS}s",
+        level=logging.WARNING,
+    )
+    return jsonify({
+        "service": SERVICE_NAME,
+        "lab_only": True,
+        "slept_seconds": LAB_SLOW_SECONDS,
+        "detector_version": SERVICE_VERSION,
+    }), 200
+
+
+@app.route("/fail", methods=["GET"])
+def lab_fail():
+    """
+    LAB-ONLY / TEST-ONLY endpoint.
+    Always returns HTTP 500 so we can drive http_errors_total up, trip the
+    high-error-rate alert, and show a failed span in Jaeger. Do NOT expose in prod.
+    """
+    log_event(
+        event="lab_fail",
+        outcome="failure",
+        endpoint="/fail",
+        method="GET",
+        message="LAB fail endpoint invoked - returning injected 500",
+        level=logging.ERROR,
+    )
+    return jsonify({
+        "service": SERVICE_NAME,
+        "lab_only": True,
+        "error": "injected_failure",
+        "message": "Simulated failure for observability testing",
+    }), 500
 
 
 @app.errorhandler(404)

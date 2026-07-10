@@ -1,0 +1,53 @@
+# Prometheus configuration for the Satellite Telemetry MELT stack.
+# Services are scraped by their Docker Compose service names
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: satellite-telemetry
+
+# Route firing alerts to Alertmanager (optional component; Prometheus still
+# evaluates and shows alert state on its own /alerts page without it).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+scrape_configs:
+  # Prometheus scraping itself.
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Service A - Ground Station API (public entry point).
+  - job_name: "service-a"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["ground-station-api:3001"]
+        labels:
+          service: "ground-station-api"
+
+  # Service B - Telemetry Parser (internal).
+  - job_name: "service-b"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["telemetry-parser:3002"]
+        labels:
+          service: "telemetry-parser"
+
+  # Service C - Anomaly Detector (internal).
+  - job_name: "service-c"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["anomaly-detector:3003"]
+        labels:
+          service: "anomaly-detector"
+
+  # Container-level metrics (CPU / memory / network) for every container.
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
