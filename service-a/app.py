@@ -212,20 +212,26 @@ def health_check():
     except Exception as e:
         dependencies["anomaly_detector"] = f"unreachable: {str(e)}"
 
+    dependency_ok = all(value == "reachable" for value in dependencies.values())
+    service_status = "operational" if dependency_ok else "degraded"
+    log_level = logging.INFO if dependency_ok else logging.WARNING
+    log_outcome = "success" if dependency_ok else "degraded"
+
     duration_ms = int((time.time() - start_time) * 1000)
 
     log_event(
         event="health_check",
-        outcome="success",
+        outcome=log_outcome,
         endpoint="/health",
         method="GET",
         duration_ms=duration_ms,
-        message="Health check completed"
+        message=f"Health check completed with status={service_status}",
+        level=log_level,
     )
 
     return jsonify({
         "service": SERVICE_NAME,
-        "status": "operational",
+        "status": service_status,
         "ground_station_id": GROUND_STATION_ID,
         "service_version": SERVICE_VERSION,
         "uptime_seconds": int(time.time() - app.start_time),
