@@ -1,0 +1,77 @@
+name: Deploy
+
+
+on:
+ workflow_dispatch:
+   inputs:
+     environment:
+       description: "Deployment environment"
+       required: true
+       type: choice
+       options:
+         - development
+         - production
+     image_tag:
+       description: "Image tag to deploy (format: sha-xxxxxxx)"
+       required: true
+       type: string
+
+
+permissions:
+ contents: read
+
+
+jobs:
+ deploy:
+   name: Deploy to ${{ inputs.environment }}
+   # Use a self-hosted runner that has Docker + Docker Compose and network
+   # access to your deployment host resources.
+   runs-on: self-hosted
+   environment: ${{ inputs.environment }}
+
+
+   steps:
+     - name: Checkout repository
+       uses: actions/checkout@v4
+
+
+     - name: Validate image tag format
+       run: |
+         if ! [[ "${{ inputs.image_tag }}" =~ ^sha-[0-9a-f]{7,40}$ ]]; then
+           echo "Invalid image_tag: '${{ inputs.image_tag }}'"
+           echo "Expected format: sha-<7..40 lowercase hex chars>"
+           exit 1
+         fi
+
+
+     - name: Create runtime .env from environment vars/secrets
+       run: |
+         cat > .env <<EOF
+         DOCKERHUB_USERNAME=${{ vars.DOCKERHUB_USERNAME }}
+         APP_NAME=${{ vars.APP_NAME }}
+         IMAGE_TAG=${{ inputs.image_tag }}
+         SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
+         SLACK_CHANNEL=${{ vars.SLACK_CHANNEL }}
+         EOF
+
+
+     - name: Validate production compose file
+       run: docker compose -f docker-compose.prod.yml config
+
+
+     - name: Deploy stack
+       run: |
+         docker compose -f docker-compose.prod.yml pull
+         docker compose -f docker-compose.prod.yml up -d --remove-orphans --wait --wait-timeout 180
+
+
+     - name: Verify gateway health
+       run: curl --fail http://localhost/health
+
+
+     - name: Show running services
+       if: always()
+       run: docker compose -f docker-compose.prod.yml ps
+
+
+
