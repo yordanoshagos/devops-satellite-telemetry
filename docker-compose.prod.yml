@@ -1,17 +1,4 @@
 
-# Production compose file: pulls pre-built application images from Docker Hub
-# instead of building from local source. Used by scripts/deploy.sh.
-# Requires DOCKERHUB_USERNAME, APP_NAME, and IMAGE_TAG to be set in the
-# environment (see .env.example).
-#
-# The observability (MELT) stack uses upstream public images and the same
-# config files from this repo, so it is defined inline like the local file.
-#
-# Network isolation: only nginx sits on "frontend" and publishes a host port.
-# service-b/service-c sit on "backend" only (internal). service-a bridges
-# frontend + backend. Observability tools sit on backend (to scrape/receive
-# telemetry) and/or the observability network (for Grafana to query them).
-
 services:
    nginx:
     # Custom nginx image published by CI — installs curl so the compose
@@ -112,8 +99,17 @@ services:
    alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: alertmanager
+    entrypoint:
+      - /bin/sh
+      - -ec
+    environment:
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:?Set SLACK_WEBHOOK_URL in .env or GitHub Environment secret}
+      - SLACK_CHANNEL=${SLACK_CHANNEL:-satellite-alerts}
     command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - |
+        sed "s|__SLACK_WEBHOOK_URL__|$${SLACK_WEBHOOK_URL}|g; s|__SLACK_CHANNEL__|$${SLACK_CHANNEL}|g" \
+          /etc/alertmanager/alertmanager.yml >/tmp/alertmanager-runtime.yml
+        exec /bin/alertmanager --config.file=/tmp/alertmanager-runtime.yml
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:

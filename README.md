@@ -503,7 +503,7 @@ docker compose down               # stop (add -v to also wipe metric/log volumes
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/health` | GET | Health + dependency status |
+| `/health` | GET | Health + dependency status (`operational` or `degraded`) |
 | `/metrics` | GET | Prometheus metrics |
 | `/slow` | GET | **LAB-ONLY** inject latency (A → B → C all sleep) |
 | `/fail` | GET | **LAB-ONLY** inject a 500 across the pipeline |
@@ -572,6 +572,38 @@ curl -s http://localhost:9090/api/v1/alerts | python3 -m json.tool
 # 3. See it in Grafana "Alert State" panel and Alertmanager (http://localhost:9093)
 # 4. Confirm normal: stop the load; the alert auto-resolves as the rate drops.
 ```
+
+### Optional: Send alerts to Slack
+
+1. Create a Slack Incoming Webhook in your workspace/channel.
+2. Copy the env template and set your Slack values in `.env`:
+
+```bash
+cp .env.example .env
+# then edit .env:
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
+SLACK_CHANNEL=satellite-alerts
+```
+
+3. Restart Alertmanager (compose injects values into runtime config):
+
+```bash
+docker compose up -d alertmanager
+```
+
+4. Trigger an alert and verify delivery:
+
+```bash
+scripts/simulate-failure.sh error
+```
+
+Then check:
+- Prometheus alerts page (`http://localhost:9090/alerts`)
+- Alertmanager UI (`http://localhost:9093`)
+- Your Slack channel for the alert notification
+
+Security note:
+- If a real webhook URL was ever committed, rotate/revoke it in Slack and replace it in `.env`.
 
 ---
 
