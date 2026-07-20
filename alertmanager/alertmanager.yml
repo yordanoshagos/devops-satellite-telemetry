@@ -1,11 +1,6 @@
 
 global:
   resolve_timeout: 5m
-  smtp_smarthost: "__SMTP_SMARTHOST__"
-  smtp_from: "__SMTP_FROM__"
-  smtp_auth_username: "__SMTP_AUTH_USERNAME__"
-  smtp_auth_password: "__SMTP_AUTH_PASSWORD__"
-  smtp_require_tls: __SMTP_REQUIRE_TLS__
 
 route:
   receiver: default
@@ -14,7 +9,7 @@ route:
   group_interval: 30s
   repeat_interval: 1h
   routes:
-    - receiver: slack-and-email
+    - receiver: slack
       matchers:
         - severity=~"warning|critical"
 
@@ -34,37 +29,6 @@ receivers:
           *Severity:* {{ .Labels.severity }}\n
           *Summary:* {{ .Annotations.summary }}\n
           *Details:* {{ .Annotations.description }}\n
-          {{ end }}
-
-  - name: slack-and-email
-    slack_configs:
-      - api_url: "__SLACK_WEBHOOK_URL__"
-        channel: "__SLACK_CHANNEL__"
-        send_resolved: true
-        username: "alertmanager"
-        title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
-        text: >-
-          {{ range .Alerts }}
-          *Service:* {{ .Labels.service }}\n
-          *Severity:* {{ .Labels.severity }}\n
-          *Summary:* {{ .Annotations.summary }}\n
-          *Details:* {{ .Annotations.description }}\n
-          {{ end }}
-    email_configs:
-      - to: "__ALERT_EMAIL_TO__"
-        send_resolved: true
-        headers:
-          subject: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})"
-        html: |
-          <h3>Satellite Telemetry Alert</h3>
-          <p><b>Status:</b> {{ .Status | toUpper }}</p>
-          {{ range .Alerts }}
-          <p>
-            <b>Service:</b> {{ .Labels.service }}<br/>
-            <b>Severity:</b> {{ .Labels.severity }}<br/>
-            <b>Summary:</b> {{ .Annotations.summary }}<br/>
-            <b>Details:</b> {{ .Annotations.description }}
-          </p>
           {{ end }}
 
 inhibit_rules:
