@@ -105,15 +105,9 @@ services:
     environment:
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:?Set SLACK_WEBHOOK_URL in .env or GitHub Environment secret}
       - SLACK_CHANNEL=${SLACK_CHANNEL:-satellite-alerts}
-      - SMTP_SMARTHOST=${SMTP_SMARTHOST:?Set SMTP_SMARTHOST in .env (for example smtp.gmail.com:587)}
-      - SMTP_FROM=${SMTP_FROM:?Set SMTP_FROM in .env (sender address)}
-      - SMTP_AUTH_USERNAME=${SMTP_AUTH_USERNAME:?Set SMTP_AUTH_USERNAME in .env}
-      - SMTP_AUTH_PASSWORD=${SMTP_AUTH_PASSWORD:?Set SMTP_AUTH_PASSWORD in .env (SMTP password or app password)}
-      - SMTP_REQUIRE_TLS=${SMTP_REQUIRE_TLS:-true}
-      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:?Set ALERT_EMAIL_TO in .env (recipient address)}
     command:
       - |
-        sed "s|__SLACK_WEBHOOK_URL__|$${SLACK_WEBHOOK_URL}|g; s|__SLACK_CHANNEL__|$${SLACK_CHANNEL}|g; s|__SMTP_SMARTHOST__|$${SMTP_SMARTHOST}|g; s|__SMTP_FROM__|$${SMTP_FROM}|g; s|__SMTP_AUTH_USERNAME__|$${SMTP_AUTH_USERNAME}|g; s|__SMTP_AUTH_PASSWORD__|$${SMTP_AUTH_PASSWORD}|g; s|__SMTP_REQUIRE_TLS__|$${SMTP_REQUIRE_TLS}|g; s|__ALERT_EMAIL_TO__|$${ALERT_EMAIL_TO}|g" \
+        sed "s|__SLACK_WEBHOOK_URL__|$${SLACK_WEBHOOK_URL}|g; s|__SLACK_CHANNEL__|$${SLACK_CHANNEL}|g" \
           /etc/alertmanager/alertmanager.yml >/tmp/alertmanager-runtime.yml
         exec /bin/alertmanager --config.file=/tmp/alertmanager-runtime.yml
     volumes:

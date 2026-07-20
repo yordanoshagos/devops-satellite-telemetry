@@ -573,30 +573,19 @@ curl -s http://localhost:9090/api/v1/alerts | python3 -m json.tool
 # 4. Confirm normal: stop the load; the alert auto-resolves as the rate drops.
 ```
 
-### Optional: Send alerts to Slack and Email
-
-Alertmanager is configured to notify both Slack and email for `warning` and
-`critical` alerts.
+### Optional: Send alerts to Slack
 
 1. Create a Slack Incoming Webhook in your workspace/channel.
-2. Configure SMTP credentials and recipients in `.env`:
+2. Copy the env template and set your Slack values in `.env`:
 
 ```bash
 cp .env.example .env
 # then edit .env:
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
 SLACK_CHANNEL=satellite-alerts
-
-# SMTP (Gmail example)
-SMTP_SMARTHOST=smtp.gmail.com:587
-SMTP_FROM=alerts@your-domain.com
-SMTP_AUTH_USERNAME=alerts@your-domain.com
-SMTP_AUTH_PASSWORD=your-app-password
-SMTP_REQUIRE_TLS=true
-ALERT_EMAIL_TO=oncall@your-domain.com
 ```
 
-3. Restart Alertmanager so compose re-renders runtime config:
+3. Restart Alertmanager (compose injects values into runtime config):
 
 ```bash
 docker compose up -d alertmanager
@@ -612,21 +601,9 @@ Then check:
 - Prometheus alerts page (`http://localhost:9090/alerts`)
 - Alertmanager UI (`http://localhost:9093`)
 - Your Slack channel for the alert notification
-- Your email inbox for the same alert notification
-
-Useful debug commands:
-
-```bash
-# Alertmanager delivery counters
-curl -s http://localhost:9093/metrics | grep -E 'alertmanager_notifications_(total|failed_total)|alertmanager_notification_latency_seconds_count' | cat
-
-# Alertmanager runtime errors (SMTP auth, TLS, DNS, etc.)
-docker compose logs alertmanager --tail=100
-```
 
 Security note:
 - If a real webhook URL was ever committed, rotate/revoke it in Slack and replace it in `.env`.
-- Never use your mailbox login password directly when provider supports app passwords.
 
 ---
 
