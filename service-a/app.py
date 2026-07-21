@@ -21,12 +21,14 @@ SERVICE_VERSION = "v1.0.0"
 GROUND_STATION_ID = "GS-Nairobi-1"
 PORT = 3001
 
-# Service discovery - internal services communicate by hostname
+# Service discovery - internal services communicate by hostname.
+# On ECS, set FQDN Service Connect URLs, e.g.:
+#   TELEMETRY_PARSER_URL=http://service-b.group10.internal:3002/parse
 TELEMETRY_PARSER_URL = os.environ.get("TELEMETRY_PARSER_URL", "http://telemetry-parser:3002/parse")
 ANOMALY_DETECTOR_URL = os.environ.get("ANOMALY_DETECTOR_URL", "http://anomaly-detector:3003/analyze")
-# Base URL of the parser (strip the /parse path) so the lab /slow and /fail
-# endpoints can push a trace down the full A -> B -> C chain.
+# Base URLs (strip the path) for /health, /slow, and /fail.
 TELEMETRY_PARSER_BASE_URL = TELEMETRY_PARSER_URL.rsplit("/", 1)[0]
+ANOMALY_DETECTOR_BASE_URL = ANOMALY_DETECTOR_URL.rsplit("/", 1)[0]
 
 # LAB-ONLY: how long the /slow endpoint sleeps before calling downstream.
 LAB_SLOW_SECONDS = float(os.environ.get("LAB_SLOW_SECONDS", "3"))
@@ -198,21 +200,23 @@ def health_check():
     """Health endpoint - returns operational status and dependency reachability."""
     start_time = time.time()
 
-    # Check dependencies
+    # Check dependencies via env-derived base URLs (Compose hostnames locally,
+    # Service Connect FQDNs on ECS). Only B is required for "operational":
+    # traffic contracts forbid A → C, so requiring C would always degrade on ECS.
     dependencies = {}
     try:
-        resp = requests.get("http://telemetry-parser:3002/health", timeout=2)
+        resp = requests.get(f"{TELEMETRY_PARSER_BASE_URL}/health", timeout=2)
         dependencies["telemetry_parser"] = "reachable" if resp.status_code == 200 else "unhealthy"
     except Exception as e:
         dependencies["telemetry_parser"] = f"unreachable: {str(e)}"
 
     try:
-        resp = requests.get("http://anomaly-detector:3003/health", timeout=2)
+        resp = requests.get(f"{ANOMALY_DETECTOR_BASE_URL}/health", timeout=2)
         dependencies["anomaly_detector"] = "reachable" if resp.status_code == 200 else "unhealthy"
     except Exception as e:
         dependencies["anomaly_detector"] = f"unreachable: {str(e)}"
 
-    dependency_ok = all(value == "reachable" for value in dependencies.values())
+    dependency_ok = dependencies.get("telemetry_parser") == "reachable"
     service_status = "operational" if dependency_ok else "degraded"
     log_level = logging.INFO if dependency_ok else logging.WARNING
     log_outcome = "success" if dependency_ok else "degraded"
@@ -600,3 +604,4 @@ if __name__ == "__main__":
         message=f"{SERVICE_NAME} {SERVICE_VERSION} starting on port {PORT}"
     )
     app.run(host="0.0.0.0", port=PORT, threaded=True)
+

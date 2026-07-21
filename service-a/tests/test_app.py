@@ -13,8 +13,33 @@ def test_health_endpoint_reports_dependencies(mock_get):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["service"] == "ground-station-api"
+    assert body["status"] == "operational"
     assert body["dependencies"]["telemetry_parser"] == "reachable"
     assert body["dependencies"]["anomaly_detector"] == "reachable"
+    assert mock_get.call_count == 2
+    called_urls = [call.args[0] for call in mock_get.call_args_list]
+    assert f"{app_module.TELEMETRY_PARSER_BASE_URL}/health" in called_urls
+    assert f"{app_module.ANOMALY_DETECTOR_BASE_URL}/health" in called_urls
+
+
+@patch("app.requests.get")
+def test_health_operational_when_only_parser_reachable(mock_get):
+    """A→C is denied by SG on ECS; operational depends only on service B."""
+    def side_effect(url, timeout=2):
+        if "anomaly" in url or "service-c" in url or ":3003" in url:
+            raise Exception("connection timed out")
+        return Mock(status_code=200)
+
+    mock_get.side_effect = side_effect
+
+    client = app_module.app.test_client()
+    resp = client.get("/health")
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "operational"
+    assert body["dependencies"]["telemetry_parser"] == "reachable"
+    assert "unreachable" in body["dependencies"]["anomaly_detector"]
 
 
 @patch("app.requests.get", side_effect=Exception("connection refused"))
