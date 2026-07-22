@@ -1,0 +1,34 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_ACCOUNT_ID: "827478161993"
+    AWS_DEFAULT_REGION: "eu-central-1"
+    ECR_REPO: "devops-g10-anomaly-detector"
+    CONTAINER_NAME: "anomaly-detector"
+    DOCKERFILE: "service-c/Dockerfile"
+    BUILD_CONTEXT: "service-c"
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
+          docker login --username AWS --password-stdin
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=sha-$COMMIT_HASH
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPO
+      - echo "Building $REPOSITORY_URI:$IMAGE_TAG"
+  build:
+    commands:
+      - docker build -t $REPOSITORY_URI:$IMAGE_TAG -f $DOCKERFILE $BUILD_CONTEXT
+  post_build:
+    commands:
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+      - cat imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
