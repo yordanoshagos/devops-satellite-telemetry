@@ -121,3 +121,55 @@ HTTP/1.1 200 OK
 status: operational
 ```
 
+### SCAR-006 — Phase 5 CodePipeline IAM chain (all three services)
+
+| Field | Entry |
+|-------|-------|
+| Symptom | All three pipelines (`devops-g10-*-pipeline`) failed stage-by-stage after Source succeeded: **Build** could not download source from S3 (`s3:GetObject` denied on `SourceArti/...`); then **Build** could not upload `imagedefinitions.json` (`s3:PutObject` denied on `BuildArtif/...`); then **Deploy** failed with *“The provided role does not have sufficient permissions to access ECS”*. Manual **Start build** on CodeBuild had worked earlier — only pipeline-triggered runs failed. |
+| First hypothesis | GitHub connection, buildspec YAML, or ECS service/cluster misconfiguration in the Deploy stage. |
+| Evidence | CodeBuild logs showed `AccessDenied` on role `devops-g10-telemetry-parser-codebuild-role` for artifact bucket `devops-g10-codepipeline-artifacts-827478161993`. After fixing S3 on CodeBuild roles, Build succeeded but Deploy failed on `devops-g10-*-pipeline-role`. Each error named a different IAM action and role — pipeline passes artifacts through S3 between stages, so **CodeBuild role** and **pipeline role** need different permissions. |
+| Actual cause | Phase 5 uses two IAM roles per service. When CodePipeline runs CodeBuild, source is **not** cloned from GitHub in the build job — it is read from the pipeline artifact bucket. The pipeline role writes Source artifacts and starts CodeBuild; the CodeBuild role must read Source artifacts and write Build artifacts; the pipeline role must read Build artifacts and call ECS (`RegisterTaskDefinition`, `UpdateService`) with `iam:PassRole` to `devops-g10-ecs-execution-role` and `devops-g10-ecs-task-role`. Inline policies added incrementally only fixed one stage at a time. |
+| Repair | Added inline policies on all three **`*-codebuild-role`**: `CodeBuildArtifacts` — `s3:GetObject`, `s3:GetObjectVersion`, `s3:PutObject` on `devops-g10-codepipeline-artifacts-827478161993/*` (plus `ListBucket` / `GetBucketLocation` on the bucket). Added inline policies on all three **`*-pipeline-role`**: `CodePipelineArtifactBucket` (S3 read/write for Source/Build artifacts), `CodePipelineStartCodeBuild` (`codebuild:StartBuild`, `BatchGetBuilds`), `CodePipelineECSDeploy` (`ecs:DescribeServices`, `ecs:DescribeTaskDefinition`, `ecs:DescribeTasks`, `ecs:ListTasks`, `ecs:RegisterTaskDefinition`, `ecs:UpdateService`, plus `iam:PassRole` to the two shared ECS roles with `iam:PassedToService = ecs-tasks.amazonaws.com`). **Release change** on each pipeline → Source ✓ Build ✓ Deploy ✓ for all three services. |
+| Prevention | Map IAM to pipeline stages before first run: Source → pipeline role S3 write; Build → CodeBuild role S3 read/write + pipeline role StartBuild; Deploy → pipeline role S3 read + ECS + PassRole. Use a checklist per role instead of fixing one 403 at a time. Confirm with a full pipeline run (not only manual CodeBuild). After deploy, verify new `sha-*` tag in ECR and ECS deployment on `devops-g10-cluster`. |
+
+**Permission map (Phase 5):**
+
+| Stage | IAM role | Required actions |
+|-------|----------|------------------|
+| Source | `*-pipeline-role` | `s3:PutObject` on artifact bucket |
+| Build (start) | `*-pipeline-role` | `codebuild:StartBuild`, `codebuild:BatchGetBuilds` |
+| Build (run) | `*-codebuild-role` | `s3:GetObject` on `SourceArti/...` |
+| Build (output) | `*-codebuild-role` | `s3:PutObject` on `BuildArtif/...` |
+| Deploy | `*-pipeline-role` | `s3:GetObject` on build artifact + ECS API + `iam:PassRole` |
+
+**Evidence — typical Build failure (missing S3 read on CodeBuild role):**
+
+```text
+error while downloading key devops-g10-telemetry/SourceArti/5Hjk2vk
+AccessDenied: ... devops-g10-telemetry-parser-codebuild-role ... s3:GetObject
+on arn:aws:s3:::devops-g10-codepipeline-artifacts-827478161993/...
+```
+
+**Evidence — typical Deploy failure (missing ECS on pipeline role):**
+
+```text
+Error code: Insufficient permissions
+Error message: The provided role does not have sufficient permissions to access ECS
+Pipeline: devops-g10-telemetry-parser-pipeline
+Action execution ID: 4ca76f98-ded0-460e-b060-bfb61a1a57d4
+```
+
+**Evidence — all three pipelines green after IAM repair (commit `57ca261a`, PR #52):**
+
+Service A — `devops-g10-ground-station-api-pipeline` (Source → Build → Deploy succeeded):
+
+![SCAR-006 ground-station-api pipeline all stages succeeded](evidence/scar-006-pipeline-ground-station-api.png)
+
+Service B — `devops-g10-telemetry-parser-pipeline` (Source → Build → Deploy succeeded):
+
+![SCAR-006 telemetry-parser pipeline all stages succeeded](evidence/scar-006-pipeline-telemetry-parser.png)
+
+Service C — `devops-g10-anomaly-detector-pipeline` (Source → Build → Deploy succeeded):
+
+![SCAR-006 anomaly-detector pipeline all stages succeeded](evidence/scar-006-pipeline-anomaly-detector.png)
+
