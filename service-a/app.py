@@ -197,24 +197,24 @@ def log_event(event, outcome, processing_request_id=None, satellite_id=None,
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    """Health endpoint - returns operational status and dependency reachability."""
+    """Liveness + optional B reachability. Must stay fast for ECS/ALB health checks.
+
+    Do NOT probe Service C here: traffic contracts forbid A→C, so that call hangs
+    until timeout (~2s) and the container HEALTHCHECK (client timeout 2s) fails
+    even though this endpoint eventually returns HTTP 200.
+    """
     start_time = time.time()
 
-    # Check dependencies via env-derived base URLs (Compose hostnames locally,
-    # Service Connect FQDNs on ECS). Only B is required for "operational":
-    # traffic contracts forbid A → C, so requiring C would always degrade on ECS.
     dependencies = {}
+    # Short timeout so ECS container health checks stay under HEALTHCHECK limits.
     try:
-        resp = requests.get(f"{TELEMETRY_PARSER_BASE_URL}/health", timeout=2)
+        resp = requests.get(f"{TELEMETRY_PARSER_BASE_URL}/health", timeout=0.5)
         dependencies["telemetry_parser"] = "reachable" if resp.status_code == 200 else "unhealthy"
     except Exception as e:
         dependencies["telemetry_parser"] = f"unreachable: {str(e)}"
 
-    try:
-        resp = requests.get(f"{ANOMALY_DETECTOR_BASE_URL}/health", timeout=2)
-        dependencies["anomaly_detector"] = "reachable" if resp.status_code == 200 else "unhealthy"
-    except Exception as e:
-        dependencies["anomaly_detector"] = f"unreachable: {str(e)}"
+    # Intentionally not probed — SG denies A→C; probing would stall /health ~2s.
+    dependencies["anomaly_detector"] = "skipped: A→C denied by traffic contract"
 
     dependency_ok = dependencies.get("telemetry_parser") == "reachable"
     service_status = "operational" if dependency_ok else "degraded"
