@@ -15,8 +15,16 @@ Pins go in `versions.tf`. Exact provider version frozen by committing `.terrafor
 
 | Stack | Path | Purpose | Destroy with workload? |
 |---|---|---|---|
-| Bootstrap | `infra/bootstrap/` | Encrypted S3 + locking for state | **No** |
+| Bootstrap | `infra/bootstrap/` | Encrypted S3 bucket for state + locking | **No** |
 | Workload | `infra/environments/lab/` | VPC, ECS, ALB, services | **Yes** |
+
+## Locking decision (chosen)
+
+We use the **S3 native lockfile** (`use_lockfile = true`) supported by Terraform 1.15.8. We do **not** create a DynamoDB lock table.
+
+- Simpler: no extra resource; the lock lives inside the same S3 bucket.
+- No unresolved implementation choice at apply time.
+- If a future Terraform upgrade removes or changes this flag, the platform owner will migrate to DynamoDB in one dedicated PR — not silently.
 
 ## Bootstrap bucket requirements
 
@@ -26,7 +34,7 @@ Pins go in `versions.tf`. Exact provider version frozen by committing `.terrafor
 | Encryption | Default (AES256 / SSE-S3) |
 | Versioning | Enabled |
 | Public access | Blocked |
-| Locking | Enabled (S3 lock and/or DynamoDB `devops-g10-tf-locks`) |
+| Locking | **S3 lockfile** (`use_lockfile = true`) |
 | Region | `eu-central-1` |
 | Tags | `Project=devops-mentorship`, `Group=group-10`, `Owner=platform-owner`, `Environment=lab` |
 
@@ -52,8 +60,6 @@ terraform {
   }
 }
 ```
-
-If `use_lockfile` is not available on 1.15.8, use the documented lock approach for that version. Do not bypass locking.
 
 ## Safety
 
