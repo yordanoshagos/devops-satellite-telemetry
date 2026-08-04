@@ -68,9 +68,11 @@ module "service_a" {
   # the task-def family, log-group, and SG names, which already exist for
   # the console-based ecs-fargate-lab under devops-g10-<app>. See the ECR
   # comment above for the same collision reasoning.
-  name_prefix          = "devops-g10-iac-"
-  name                 = "ground-station-api"
-  service_connect_name = "service-a"
+  name_prefix = "devops-g10-iac-"
+  name        = "ground-station-api"
+  # Must match app default hostnames (TELEMETRY_PARSER_URL / callback targets).
+  # service-a/b/c DNS names are not what the containers resolve today.
+  service_connect_name = "ground-station-api"
   container_port       = 3001
   desired_count        = 2
 
@@ -96,7 +98,7 @@ module "service_b" {
 
   name_prefix          = "devops-g10-iac-"
   name                 = "telemetry-parser"
-  service_connect_name = "service-b"
+  service_connect_name = "telemetry-parser"
   container_port       = 3002
   desired_count        = 1
 
@@ -121,7 +123,7 @@ module "service_c" {
 
   name_prefix          = "devops-g10-iac-"
   name                 = "anomaly-detector"
-  service_connect_name = "service-c"
+  service_connect_name = "anomaly-detector"
   container_port       = 3003
   desired_count        = 1
 

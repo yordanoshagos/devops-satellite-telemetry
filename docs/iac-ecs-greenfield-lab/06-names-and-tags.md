@@ -44,7 +44,7 @@ Prefix: `devops-g10-`
 | ECR / task family | `devops-g10-iac-ground-station-api` | `devops-g10-iac-telemetry-parser` | `devops-g10-iac-anomaly-detector` |
 | ECS service | `ground-station-api` | `telemetry-parser` | `anomaly-detector` |
 | SG | `devops-g10-iac-ground-station-api-sg` | `devops-g10-iac-telemetry-parser-sg` | `devops-g10-iac-anomaly-detector-sg` |
-| Port mapping name | `service-a` | `service-b` | `service-c` |
+| Port mapping / Service Connect DNS | `ground-station-api` | `telemetry-parser` | `anomaly-detector` |
 | Log group | `/ecs/devops-g10-iac-ground-station-api` | `/ecs/devops-g10-iac-telemetry-parser` | `/ecs/devops-g10-iac-anomaly-detector` |
 | Port | 3001 | 3002 | 3003 |
 | Desired | 2 | 1 | 1 |
