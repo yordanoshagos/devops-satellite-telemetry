@@ -30,7 +30,7 @@ We use the **S3 native lockfile** (`use_lockfile = true`) supported by Terraform
 
 | Requirement | Value |
 |---|---|
-| Name | `devops-g10-tfstate-<account-id>` |
+| Name | `devops-g10-tfstate-<account-id>` (naming pattern) — **live: `devops-g10-tfstate-827478161993`** |
 | Encryption | Default (AES256 / SSE-S3) |
 | Versioning | Enabled |
 | Public access | Blocked |
@@ -38,7 +38,11 @@ We use the **S3 native lockfile** (`use_lockfile = true`) supported by Terraform
 | Region | `eu-central-1` |
 | Tags | `Project=devops-mentorship`, `Group=group-10`, `Owner=platform-owner`, `Environment=lab` |
 
-## Workload backend (planned)
+Applied via `infra/bootstrap/` (Step 1). Bucket already exists — no re-apply needed to use it.
+
+## Workload backend (implemented)
+
+Wired in `infra/environments/lab/versions.tf` (Step 3). `backend` blocks can't use variables, so the bucket name is literal, not `var.region`-driven:
 
 ```hcl
 terraform {
@@ -52,7 +56,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket       = "devops-g10-tfstate-<account-id>"
+    bucket       = "devops-g10-tfstate-827478161993"
     key          = "lab/workload/terraform.tfstate"
     region       = "eu-central-1"
     encrypt      = true
