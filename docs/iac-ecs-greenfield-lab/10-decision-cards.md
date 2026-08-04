@@ -1,20 +1,6 @@
-# 10. Five architecture decision cards
-
-Each card answers exactly four questions from the assignment.
-
-| # | Decision | Author | Reviewer |
-|---|---|---|---|
-| 1 | Two Availability Zones | Berissa | Arsema |
-| 2 | Private Fargate tasks | **Arsema** | Yordanos |
-| 3 | Security-group references instead of IP allowlists | Yordanos | Saloi |
-| 4 | Immutable image SHA | Saloi | Berissa |
-| 5 | Remote, versioned and locked state | Saloi | Arsema |
-
----
-
 ## Card 1 — Two Availability Zones
 
-**Author: Berissa** — fill below.
+**Author: Berissa** 
 
 1. **What risk are we reducing?**  
    _TODO_
@@ -27,7 +13,7 @@ Each card answers exactly four questions from the assignment.
 
 ---
 
-## Card 2 — Private Fargate tasks (Arsema — DONE)
+## Card 2 — Private Fargate tasks 
 
 1. **What risk are we reducing?**  
    Tasks are not reachable from the Internet even if a security-group mistake is made later. We remove accidental public exposure of application ports 3001/3002/3003 and force all ingress through the ALB path we control.
@@ -48,7 +34,7 @@ Each card answers exactly four questions from the assignment.
 
 ## Card 3 — Security-group references instead of IP allowlists
 
-**Author: Yordanos** — fill below.
+**Author: Yordanos** 
 
 1. **What risk are we reducing?**  
    _TODO_
