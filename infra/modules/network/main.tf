@@ -1,9 +1,4 @@
-# One NAT Gateway (in the AZ-1 public subnet) for both private subnets.
-# Trade-off: if AZ-1 or the NAT itself fails, both private subnets lose Internet
-# egress (ECR pulls, CloudWatch Logs, ECS APIs). Accepted for the lab because we
-# destroy the workload between cycles. Not acceptable for production — for prod
-# use one NAT per AZ or VPC endpoints for ECR/Logs/ECS/S3.
-# See docs/iac-ecs-greenfield-lab/04-routes-egress.md.
+
 
 locals {
   az_a = var.availability_zones[0]
