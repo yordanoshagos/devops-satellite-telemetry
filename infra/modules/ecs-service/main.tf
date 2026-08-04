@@ -2,10 +2,10 @@ locals {
   family   = "${var.name_prefix}${var.name}"
   log_name = "/ecs/${local.family}"
 
-  effective_ingress_sg_ids = compact(concat(
+  ingress_sg_ids = concat(
     var.ingress_source_sg_ids,
-    var.enable_alb && var.alb_security_group_id != null ? [var.alb_security_group_id] : [],
-  ))
+    var.enable_alb ? [var.alb_security_group_id] : [],
+  )
 }
 
 resource "aws_cloudwatch_log_group" "this" {
@@ -22,7 +22,9 @@ resource "aws_security_group" "this" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "from_sg" {
-  for_each = toset(local.effective_ingress_sg_ids)
+  for_each = {
+    for idx, sg_id in local.ingress_sg_ids : tostring(idx) => sg_id
+  }
 
   security_group_id            = aws_security_group.this.id
   referenced_security_group_id = each.value
