@@ -48,28 +48,32 @@
 
 ## Card 4 — Immutable image SHA
 
-**Author: Saloi** — fill below.
+
 
 1. **What risk are we reducing?**  
-   _TODO_
+   Mystery deploys and floating `latest` retags — we always know which Git commit is running in ECS.
 2. **What trade-off are we accepting?**  
-   _TODO_
+   Every release needs a build/push plus an IaC SHA update; slightly more steps than a floating tag.
 3. **Which AWS Well-Architected pillar is most relevant?**  
-   _TODO_
+   **Operational Excellence** (controlled, repeatable releases).
 4. **What evidence will prove the design works?**  
-   _TODO_
+   - Variable validation / tests reject `latest`.  
+   - Task definition and runtime show `sha-<gitsha>`.  
+   - After apply, ALB serves that same SHA.
 
 ---
 
 ## Card 5 — Remote, versioned and locked state
 
-**Author: Saloi** — fill below.
+
 
 1. **What risk are we reducing?**  
-   _TODO_
+   Local state divergence, lost state, and two people applying at once overwriting each other.
 2. **What trade-off are we accepting?**  
-   _TODO_
+   A bootstrap stack must exist and stay protected; extra setup before the first workload apply.
 3. **Which AWS Well-Architected pillar is most relevant?**  
-   _TODO_
+   **Operational Excellence** / **Reliability**.
 4. **What evidence will prove the design works?**  
-   _TODO_
+   - S3 backend with versioning, encryption, and public access blocked.  
+   - Lock prevents concurrent apply.  
+   - Destroy removes workload but not the bootstrap bucket.
