@@ -4,11 +4,11 @@ Workload runs in a **custom VPC** with **private** Fargate tasks (no public IPs)
 
 | Role | Service | Port | Discovery name |
 |---|---|---|---|
-| Service A | ground-station-api | 3001 | `service-a` |
-| Service B | telemetry-parser | 3002 | `service-b` |
-| Service C | anomaly-detector | 3003 | `service-c` |
+| Service A | ground-station-api | 3001 | `ground-station-api` |
+| Service B | telemetry-parser | 3002 | `telemetry-parser` |
+| Service C | anomaly-detector | 3003 | `anomaly-detector` |
 
-Service Connect namespace: `group10.internal`  
+Service Connect namespace: `group10-iac.internal`  
 IaC cluster: `devops-g10-iac-cluster`
 
 ## Module dependency graph
@@ -28,7 +28,7 @@ graph TD
     PLAT --> SVCA
     PLAT --> SVCB
     PLAT --> SVCC
-    SVCA --> SC[Service Connect<br/>group10.internal]
+    SVCA --> SC[Service Connect<br/>group10-iac.internal]
     SVCB --> SC
     SVCC --> SC
 ```

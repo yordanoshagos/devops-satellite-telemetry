@@ -7,4 +7,4 @@
 | 2 | Missing `ALB SG → A SG` on port 3001 | 502/503 from ALB | Target group unhealthy; health check timeouts |
 | 3 | IaC image tag set to `latest` or wrong SHA | Wrong/old version, or apply/tests reject | Validation/test failure; or runtime SHA ≠ expected Git SHA |
 
-**Backup edge:** missing `C SG → A SG` (callback) → telemetry accepted but status never `completed`; errors in anomaly-detector logs to `service-a:3001`.
+**Backup edge:** missing `C SG → A SG` (callback) → telemetry accepted but status never `completed`; errors in anomaly-detector logs to `ground-station-api:3001`.

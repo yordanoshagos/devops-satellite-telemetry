@@ -27,6 +27,6 @@ Security groups in AWS have no explicit deny. A path is “denied” **only beca
 |---|---|---|---|
 | Internet → ALB | 80 | ALB DNS | — |
 | ALB → A | 3001 | TG type `ip` | `/health` |
-| A → B | 3002 | `service-b` | `/health`, `POST /parse` |
-| B → C | 3003 | `service-c` | `/health`, `POST /analyze` |
-| C → A callback | 3001 | `service-a` | `/callback` |
+| A → B | 3002 | `telemetry-parser` | `/health`, `POST /parse` |
+| B → C | 3003 | `anomaly-detector` | `/health`, `POST /analyze` |
+| C → A callback | 3001 | `ground-station-api` | `/callback` |
