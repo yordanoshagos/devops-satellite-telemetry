@@ -10,7 +10,7 @@
 | Private app AZ-1 | `10.10.10.0/24` | eu-central-1a | Fargate tasks |
 | Private app AZ-2 | `10.10.11.0/24` | eu-central-1b | Fargate tasks |
 
-Each `/24` ≈ 251 usable IPs (enough for this lab).
+Each `/24` ≈ 251 usable IPs.
 
 ## Steady-state task ENIs (approx)
 

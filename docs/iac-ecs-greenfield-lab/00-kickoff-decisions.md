@@ -4,8 +4,8 @@
 
 | Item | Value |
 |---|---|
-| IaC tool | **Terraform** (not OpenTofu) |
-| Terraform CLI | **v1.15.8** (everyone installs this exact version) |
+| IaC tool | **Terraform**|
+| Terraform CLI | **v1.15.8**|
 | AWS provider source | `hashicorp/aws` |
 | AWS provider version pin | `~> 5.0` |
 | Lockfile | After first `terraform init`, commit `.terraform.lock.hcl` |
@@ -41,5 +41,3 @@ provider "aws" {
 | Private app subnet AZ-1 | `10.10.10.0/24` |
 | Private app subnet AZ-2 | `10.10.11.0/24` |
 | Egress for private Fargate | **NAT Gateway** (one NAT in a public subnet for the lab) |
-| Task public IPs | **false** (`assign_public_ip = false`) |
-| ALB | Internet-facing, spans both public subnets |
