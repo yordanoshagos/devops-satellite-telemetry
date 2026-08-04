@@ -25,3 +25,24 @@ resource "aws_iam_role" "task" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
   tags               = var.tags
 }
+
+# ecs-service enables ECS Exec by default; without this, exec sessions fail
+# at runtime even though the task starts fine. Platform-owned — service-level
+# app policies stay empty and are added per service if/when needed.
+data "aws_iam_policy_document" "task_exec_ssm" {
+  statement {
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "task_exec_ssm" {
+  name   = "${var.cluster_name}-ecs-exec"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.task_exec_ssm.json
+}

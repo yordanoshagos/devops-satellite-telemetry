@@ -11,7 +11,16 @@ variable "service_connect_namespace" {
 }
 
 variable "tags" {
-  description = "Tags applied to all resources created by this module."
+  description = "Tags applied to every resource in this module. Must include Project, Group, Owner, Environment."
   type        = map(string)
-  default     = {}
+
+  validation {
+    condition = alltrue([
+      contains(keys(var.tags), "Project"),
+      contains(keys(var.tags), "Group"),
+      contains(keys(var.tags), "Owner"),
+      contains(keys(var.tags), "Environment"),
+    ])
+    error_message = "tags must include Project, Group, Owner, and Environment."
+  }
 }
