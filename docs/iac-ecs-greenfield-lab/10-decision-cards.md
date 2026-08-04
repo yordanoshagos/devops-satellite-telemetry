@@ -34,16 +34,14 @@
 
 ## Card 3 — Security-group references instead of IP allowlists
 
-**Author: Yordanos** 
-
 1. **What risk are we reducing?**  
-   _TODO_
+   **Risk reduced:** Brittle allowlists on task IPs that break on every replace; accidental wide-open `0.0.0.0/0` on app ports.
 2. **What trade-off are we accepting?**  
-   _TODO_
+   **Trade-off:** SG rules are coupled (order/dependencies in Terraform); harder to “just open a port” for quick debug.
 3. **Which AWS Well-Architected pillar is most relevant?**  
-   _TODO_
+   **Pillar:** Security.
 4. **What evidence will prove the design works?**  
-   _TODO_
+   **Evidence:** SG rules show source = other SG IDs; allow A→B and B→C; deny A→C and Internet→tasks; runtime proof matches.
 
 ---
 
