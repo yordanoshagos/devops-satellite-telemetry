@@ -4,8 +4,8 @@
 
 | Item | Value |
 |---|---|
-| IaC tool | **Terraform** (not OpenTofu) |
-| Terraform CLI | **v1.15.8** (everyone installs this exact version) |
+| IaC tool | **Terraform**  |
+| Terraform CLI | **v1.15.8**  |
 | AWS provider source | `hashicorp/aws` |
 | AWS provider version pin | `~> 5.0` |
 | Lockfile | After first `terraform init`, commit `.terraform.lock.hcl` |
