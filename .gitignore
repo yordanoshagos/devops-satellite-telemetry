@@ -40,3 +40,18 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# Provider locks belong at bootstrap/workload roots, not reusable modules
+infra/modules/**/.terraform.lock.hcl
