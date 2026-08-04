@@ -1,15 +1,16 @@
 ## Card 1 — Two Availability Zones
 
-**Author: Berissa** 
 
 1. **What risk are we reducing?**  
-   _TODO_
+   Single-AZ outage taking down ALB or all tasks; no place for A’s second task.
+
 2. **What trade-off are we accepting?**  
-   _TODO_
+   Slightly higher cost (ALB across 2 AZs, more subnets); more resources to manage.
+
 3. **Which AWS Well-Architected pillar is most relevant?**  
-   _TODO_
+   Reliability.
 4. **What evidence will prove the design works?**  
-   _TODO_
+   ALB subnets in two AZs; Service A tasks placed in two AZs; TG healthy across AZs.
 
 ---
 
