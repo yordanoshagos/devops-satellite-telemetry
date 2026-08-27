@@ -1,0 +1,40 @@
+Service B — ECS availability signal (Day 0, not firing)
+Saloi  2026-08-27T23:16Z  AWS_PROFILE=g10  eu-central-1
+
+===== describe-services telemetry-parser =====
+desired=1  running=1  pending=0
+taskDefinition=arn:aws:ecs:eu-central-1:240462142849:task-definition/devops-g10-iac-telemetry-parser:3
+
+events (newest first):
+  2026-08-28T01:51:48+03:00  (service telemetry-parser) has reached a steady state.
+  2026-08-28T01:51:48+03:00  (deployment ecs-svc/6428092499226455589) deployment completed.
+  2026-08-28T01:49:19+03:00  has stopped 1 running tasks: (task 059adf5577ee4aadbe9daa8730590455)
+  2026-08-28T01:48:33+03:00  has started 1 tasks: (task e4c90539e2634117b04043d5ebd1b198)
+
+===== running task =====
+TASK=arn:aws:ecs:eu-central-1:240462142849:task/devops-g10-iac-cluster/e4c90539e2634117b04043d5ebd1b198
+lastStatus=RUNNING  health=HEALTHY  startedAt=2026-08-28T01:49:11+03:00
+container telemetry-parser image=
+  240462142849.dkr.ecr.eu-central-1.amazonaws.com/devops-g10-iac-telemetry-parser:sha-aeb45210
+sidecar ecs-service-connect-JT7VW RUNNING (Envoy)
+
+===== task definition port mapping =====
+family=devops-g10-iac-telemetry-parser  revision=3
+name=telemetry-parser  containerPort=3002  hostPort=3002  appProtocol=http
+Service Connect client alias dnsName=telemetry-parser port=3002
+namespace=group10-iac.internal (ns-hsve2efktku2ieir)
+
+===== ingress (A → B) =====
+sg-0140cb7d6e278027f (devops-g10-iac-telemetry-parser-sg)
+  tcp/3002 from sg-03a16c74e29412014 (devops-g10-iac-ground-station-api-sg)
+
+===== log proof this is the parser, not a wrong image =====
+log group: /ecs/devops-g10-iac-telemetry-parser
+{"service": "telemetry-parser", "service_version": "v2.1.0", "event": "parse_complete",
+ "processing_request_id": "9b6ab995-f6b1-4e4b-86b6-c06ce6fd2764",
+ "outcome": "success", "message": "Telemetry parsing completed successfully"}
+{"event": "detector_response_received", "outcome": "success", "message": "Detector responded: nominal"}
+127.0.0.1 - - "POST /parse HTTP/1.1" 200 -
+
+This file is the ECS stand-in for a “alert not firing / B healthy” screenshot.
+Firing screenshot still needs local compose ServiceDown (see b-notes.md).

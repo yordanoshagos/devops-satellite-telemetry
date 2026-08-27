@@ -34,8 +34,8 @@ Each alert/signal must still answer: **what’s wrong**, **why it matters**, **w
 
 | File | Owner | Status |
 |------|-------|--------|
-| `a-notes.md` | Yordanos | On `docs/yordanos-reliability-target` |
-| `b-notes.md` | Saloi | Pending (Service B owner) |
+| `a-notes.md` | Yordanos | Merged |
+| `b-notes.md` | Saloi | Captured 2026-08-28 — ServiceDown fire/clear + ECS 1/1 |
 | `c-notes.md` | Berissa | Pending (Service C owner) |
 | `baseline-e2e.txt` | Yordanos | Captured 2026-08-28 |
 
@@ -43,10 +43,10 @@ Each alert/signal must still answer: **what’s wrong**, **why it matters**, **w
 
 ## Screenshot checklist (drop PNGs here)
 
-- [ ] Prometheus `/alerts` or Grafana alert state (compose) — ServiceDown  
+- [x] Prometheus `/alerts` — ServiceDown firing + cleared (`b-servicedown-firing.png`, `b-servicedown-clear.png`)  
 - [ ] HighErrorRate firing + cleared  
 - [ ] HighLatencyP95 firing + cleared  
-- [ ] ECS services table 2/1/1  
-- [ ] ALB `/health` operational  
+- [x] ECS services table 2/1/1 (`b-ecs-running.png`)  
+- [x] ALB `/health` operational (`baseline-e2e.txt`)  
 
-Name files: `alert-service-down.png`, `alert-error-rate.png`, `alert-latency.png`, `ecs-running.png`, `alb-health.png`.
+B-owned names: `b-servicedown-firing.png`, `b-servicedown-clear.png`, `b-ecs-running.png` (plus graph companions). Platform names if you copy: `alert-service-down.png`, `alert-error-rate.png`, `alert-latency.png`, `ecs-running.png`, `alb-health.png`.

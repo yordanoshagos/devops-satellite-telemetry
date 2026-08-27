@@ -114,3 +114,15 @@ Raw command capture: `production-readiness/alerts/baseline-e2e.txt`.
 | Platform | Arsema | Cluster/ALB/SG/Service Connect, error-budget calls, GO/NO-GO |
 | Service B | Saloi | Parser availability (feeds availability + forward path) |
 | Service C | Berissa | Analyze + callback completion (feeds journey success) |
+
+---
+
+## Service B review (Saloi, 2026-08-28)
+
+Do these SLOs match what B can actually support?
+
+| SLI | SLO | Saloi |
+|-----|-----|-------|
+| Availability 99.5% | Keep, with care | B **desired=1** — every replace is a full parse outage (~2 min observed). Exclude planned deploys from the budget or we burn it on routine SHA rolls. `/health` HTTP 200 is not enough; require `telemetry_parser=reachable`. |
+| Ingest latency p95 < 2s | **OK for the B hop** | Day 0 `parse_complete` duration_ms≈0, B→C ~15ms. Do not use accept→completed until callback works. |
+| Journey success 99% | **Cannot support today** | 0% `completed` on Day 0. C cannot resolve `ground-station-api` (see failure-map Break 5). Even after DNS, A in-memory store + desired=2 makes ALB `/status` untrustworthy. Use log-based success (B `parse_complete` + C `analyze_complete`) until then. |

@@ -36,8 +36,8 @@ We are **not** a clean unconditional GO yet: the critical journey’s terminal s
 |---|-----------|----------------|
 | 1 | Document and fix or accept **status sticky / multi-task in-memory** gap (A desired=2) | Yordanos + Arsema |
 | 2 | Prove **callback completion** (status → completed) or record as known SEV in failure-map | Berissa + Arsema |
-| 3 | Saloi/Berissa complete **failure-map.md** (≥5 break points) | Saloi + Berissa |
-| 4 | Add **B/C alert notes + firing screenshots**; finish incident drill + `incident-timeline.md` | All four; Yordanos leads drill |
+| 3 | Saloi/Berissa complete **failure-map.md** (≥5 break points) | Saloi drafted 1–6 (Berissa confirm 4–6) |
+| 4 | Add **B/C alert notes + firing screenshots**; finish incident drill + `incident-timeline.md` | B notes + ServiceDown PNGs landed; C notes + drill still open |
 | 5 | Jaeger/OTLP unavailable on ECS (noisy logs) — accept compose tracing for now | Platform |
 
 ---
@@ -48,7 +48,7 @@ We are **not** a clean unconditional GO yet: the critical journey’s terminal s
 |------|------|------|-------|
 | Arsema A. Gebremichael | Platform | **GO WITH CONDITIONS** | Drafted; conditions above |
 | Yordanos Tesfay Hagos | Service A | _pending on PR review_ | Reliability target + A alerts landed |
-| Saloi | Service B | _pending_ | failure-map + b-notes |
+| Saloi | Service B | **GO WITH CONDITIONS** | B parse proven in CloudWatch; callback DNS still fails so `/status` never `completed` |
 | Berissa | Service C | _pending_ | failure-map + c-notes + callback proof |
 
 ---

@@ -29,3 +29,10 @@ detector_response_received outcome=success message="Detector responded: nominal"
 - A→B→C forward path is working.
 - Journey did not reach terminal "completed" (stuck awaiting_callback).
 - Separate /status polls sometimes returned "Request ID not found" while desiredCount(A)=2 (in-memory status + ALB spread across tasks).
+
+=== Saloi addendum (Service B / C callback DNS) ===
+Same window, C log group /ecs/devops-g10-iac-anomaly-detector for 1578c224-... and 9b6ab995-...:
+  event=callback_initiated  http://ground-station-api:3001/callback
+  event=callback_sent outcome=failure
+  NameResolutionError: Failed to resolve 'ground-station-api' ([Errno -2] Name or service not known)
+B parse path is not the break. See failure-map.md Break 5.

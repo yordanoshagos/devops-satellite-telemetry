@@ -71,6 +71,29 @@ aws ecs execute-command --cluster devops-g10-iac-cluster --task "$TASK" \
 # python -c "import urllib.request; print(urllib.request.urlopen('http://telemetry-parser:3002/health', timeout=5).read())"
 ```
 
+**B owner — wrong-image / SG check (Saloi):**
+
+```bash
+export AWS_PROFILE=g10 AWS_REGION=eu-central-1
+CLUSTER=devops-g10-iac-cluster
+
+TD=$(aws ecs describe-services --cluster "$CLUSTER" --services telemetry-parser \
+  --query 'services[0].taskDefinition' --output text)
+aws ecs describe-task-definition --task-definition "$TD" \
+  --query 'taskDefinition.containerDefinitions[0].{name:name,image:image,port:portMappings}'
+# Must be name=telemetry-parser, port 3002,
+# image .../devops-g10-iac-telemetry-parser:sha-<gitsha>
+
+aws logs tail /ecs/devops-g10-iac-telemetry-parser --since 15m --format short
+# JSON must say "service": "telemetry-parser" and POST /parse — not ground-station-api/3001
+
+aws ec2 describe-security-groups --group-ids sg-0140cb7d6e278027f \
+  --query 'SecurityGroups[0].IpPermissions'
+# Expect tcp/3002 from sg-03a16c74e29412014 (ground-station-api-sg)
+```
+
+If parse logs exist for the request id but `/status` stays `awaiting_callback`, this is **not** a B image rollback — escalate to Berissa (callback / C).
+
 ### 3B — Accept works, status stuck `awaiting_callback`
 
 1. Confirm B received parse + `Detector responded` for the `processing_request_id`.  
@@ -157,6 +180,7 @@ Record **T_recover** when validation passes (or explicitly note residual gap).
 
 ## Related evidence
 
-- Reliability target: owned on Yordanos branch (`reliability-target.md`)
-- Alert index: `alerts/README.md`
+- Reliability target: `reliability-target.md`
+- Failure map: `failure-map.md`
+- Alert index: `alerts/README.md` (B: `alerts/b-notes.md`)
 - GO / NO-GO: `GO-NO-GO.md`
