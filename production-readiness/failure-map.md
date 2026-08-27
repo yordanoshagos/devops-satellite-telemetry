@@ -15,7 +15,7 @@
 **Owners:** Saloi (breaks 1–3) · Berissa (breaks 4–6)  
 **Review:** Yordanos (A/ALB rows) · Arsema (SG / Service Connect wording)
 
-**Live Day 0 (2026-08-27T23:14Z):** A→B→C data path works. C→A callback does **not**. See [`alerts/baseline-e2e.txt`](alerts/baseline-e2e.txt).
+**Live Day 0 (2026-08-27T23:14Z):** A→B→C data path works. C→A callback does **not**. See [`alerts/baseline-e2e.txt`](alerts/baseline-e2e.txt), [`alerts/c-callback-fail.png`](alerts/c-callback-fail.png), [`alerts/c-status-stuck.png`](alerts/c-status-stuck.png).
 
 ---
 
@@ -65,8 +65,8 @@ Day 0 running image (good): `.../devops-g10-iac-telemetry-parser:sha-aeb45210` o
 ### Break 3 — A→B Service Connect / security group
 
 - **Failure:** A cannot open TCP 3002 to B even if both tasks are RUNNING.
-  - **SG:** B inbound must be `devops-g10-iac-ground-station-api-sg` (`sg-03a16c74e29412014`) → `devops-g10-iac-telemetry-parser-sg` (`sg-0140cb7d6e278027f`) TCP **3002**. Internet must **not** reach B (no `0.0.0.0/0` on 3002). Observed Day 0: that SG reference **is** present.
-  - **Service Connect:** A calls `http://telemetry-parser:3002` (`TELEMETRY_PARSER_URL` default). Client alias in namespace `group10-iac.internal` must be `telemetry-parser` port 3002. If the alias is wrong (historical `service-b` name), A gets connection errors / Envoy 503. PR `fix/service-connect-dns-app-names` aligned aliases with app hostnames.
+  - **SG:** B inbound must be `devops-g10-iac-ground-station-api-sg` → `devops-g10-iac-telemetry-parser-sg` TCP **3002**. Internet must **not** reach B (no `0.0.0.0/0` on 3002).
+  - **Service Connect:** A calls `http://telemetry-parser:3002` (`TELEMETRY_PARSER_URL` default). Client alias in namespace `group10-iac.internal` must be `telemetry-parser` port 3002. If the alias is wrong (historical `service-b` name), A gets connection errors / Envoy 503.
 - **Detect:**
   - `/health` → `telemetry_parser` unreachable / unhealthy while B `runningCount=1`
   - A logs `event=forward_to_parser` `outcome=failure`
@@ -79,48 +79,43 @@ Day 0 running image (good): `.../devops-g10-iac-telemetry-parser:sha-aeb45210` o
 
 ---
 
-### Break 4 — Service C down
+### Break 4 — Service C down *(Berissa)*
 
-- **Failure:** `anomaly-detector` desired 1; task stopped, bad image, or pull failure. B can still parse.
+- **Failure:** `anomaly-detector` desired 1; task stopped, bad image, crash-loop, or pull failure (`CannotPullContainerError` / NAT/ECR/exec role).
 - **Detect:**
   - B logs: `forward_to_detector` then timeout / connection error to `http://anomaly-detector:3003/analyze`
-  - ECS: `anomaly-detector` running 0/1
-  - Log group `/ecs/devops-g10-iac-anomaly-detector` silent or stopped-task events
-  - Compose: `ServiceDown` on `job=service-c`
-- **Absorb:** `/health` can stay `operational` (A only probes B, not C — traffic contract denies A→C). `POST /telemetry` may 5xx from B if B fails the C call, or accept-then-stick if B swallows it.
+  - ECS: `anomaly-detector` running 0/1; stopped reason in Events
+  - Log group `/ecs/devops-g10-iac-anomaly-detector` silent or crash loops
+  - Compose: `ServiceDown` on `job=service-c` (see `alerts/c-prom-servicedown-firing.png`)
+  - CloudWatch: `LiveTaskCount` → 0 (`alerts/c-cloudwatch-livetasks.png`)
+- **Absorb:** `/health` can stay `operational` (A only probes B, not C — traffic contract denies A→C). Parse may succeed; analyze/callback never run.
 - **User impact:** Ingest does not complete analysis. Status never `completed`.
-
-*Berissa: confirm exact B status code when C is down, and add your screenshot.*
+- **Evidence:** `alerts/c-notes.md`, `alerts/c-prom-servicedown-firing.png`, `alerts/c-ecs-running.png`
 
 ---
 
-### Break 5 — C→A callback (SG **or** Service Connect DNS)
+### Break 5 — C→A callback (SG **or** Service Connect DNS) *(Berissa)*
 
 - **Failure:** Pipeline A→B→C runs, then C cannot `POST /callback` to A.
   - **SG (predicted):** missing `devops-g10-iac-anomaly-detector-sg` → `devops-g10-iac-ground-station-api-sg` TCP 3001. Same class as SCAR-004.
-  - **DNS (observed Day 0, 2026-08-27T23:14Z):** SG path is not the current break. C logs:
-    > Failed to send callback to Ground Station: … `NameResolutionError` … Failed to resolve `'ground-station-api'` (`[Errno -2] Name or service not known`)
-    C uses `GROUND_STATION_CALLBACK_URL` default `http://ground-station-api:3001/callback`. Service Connect on A advertises `dnsName=ground-station-api` port 3001 in `group10-iac.internal`, and B **can** resolve `anomaly-detector`. C still cannot resolve `ground-station-api`. Every sampled request in the window failed the same way (including `pr-baseline-berissa-001`).
+  - **DNS (observed Day 0, 2026-08-27T23:14Z):** C logs `NameResolutionError` — Failed to resolve `'ground-station-api'`. C uses `GROUND_STATION_CALLBACK_URL` default `http://ground-station-api:3001/callback`. Forward path still works; every sampled callback in the window failed the same way.
 - **Detect:**
   - `/status/<id>` stuck at `awaiting_callback` (or 404 `Request ID not found` on the other A replica)
-  - C logs `event=callback_sent` `outcome=failure`
+  - C logs `event=callback_sent` `outcome=failure` (`alerts/c-callback-fail.png`)
   - A logs: no `event=callback_received` for that id
-  - `/health` still `operational` — ALB→A and A→B are intact
-- **Absorb:** Parse + analyze succeed (B returns 200 to A). Client gets `accepted` then a status that never completes. Easy to mistake for “green” if you only curl `/health`.
+  - `/health` still `operational` — ALB→A and A→B are intact (**do not trust health alone**)
+- **Absorb:** Parse + analyze succeed (`/analyze` 200, anomaly detection complete). Only the return path breaks.
 - **User impact:** Critical journey **fails**. Client cannot see `completed`.
-
-*Berissa: own the DNS vs SG split; attach C log screenshot. Saloi captured the text in `alerts/baseline-e2e.txt`.*
+- **Evidence:** `alerts/baseline-e2e.txt`, `alerts/c-callback-fail.png`, `alerts/c-status-stuck.png`, `alerts/c-notes.md`
 
 ---
 
-### Break 6 — Bad deploy / immutable wrong tag / NAT–ECR pull
+### Break 6 — Bad deploy / immutable wrong tag / NAT–ECR pull *(Berissa)*
 
 - **Failure:** Task definition points at a SHA that is not in ECR, wrong architecture, or private subnet has no NAT so Fargate cannot pull. Circuit breaker may roll back; or the service sits at running 0.
-- **Detect:** ECS service events `CannotPullContainerError` / `deployment failed`; task stopped reason; image URI ≠ intended `sha-<gitsha>`.
-- **Absorb:** Previous revision may still serve if circuit breaker rollback=true. If not, that service’s hop is down (Break 2 or 4).
-- **User impact:** Depends which service’s image broke. For B: same as Break 2 (502 ingest).
-
-*Berissa: optional; add NAT/ECR evidence if you have a scar.*
+- **Detect:** ECS service events `CannotPullContainerError` / `deployment failed`; task stopped reason; image URI ≠ intended `sha-<gitsha>`; tfvars SHA mismatch.
+- **Absorb:** Previous revision may still serve if circuit breaker rollback=true. If not, that service’s hop is down (Break 2 or 4 for B/C).
+- **User impact:** Depends which service’s image broke. For C: analyze/callback path dies during rollout.
 
 ---
 
@@ -128,7 +123,20 @@ Day 0 running image (good): `.../devops-g10-iac-telemetry-parser:sha-aeb45210` o
 
 1. **A `/health` is always HTTP 200.** Degraded B still looks like a healthy ALB target. Do not use ALB target-health alone for the parse path — read the JSON `telemetry_parser` field and B running count.
 2. **A `request_store` is in-memory and A desired=2.** `GET /status/<id>` load-balances; ~half the responses are `Request ID not found` even when the other replica has `awaiting_callback`. Success SLI “% completed” is not measurable through the ALB without sticky sessions or shared state.
-3. **Prometheus `ServiceDown` is compose-only.** ECS lab signal for B is CloudWatch + ECS running count + `/health` JSON, not `up{job="service-b"}`.
+3. **Prometheus `ServiceDown` is compose-only on ECS.** ECS lab signal is CloudWatch + ECS running count + logs; compose Prom/Grafana still used for alert demos (`alerts/c-observability.md`).
+
+---
+
+## Mapping to traffic contract
+
+| Edge | Port | If broken → see |
+|---|---|---|
+| Internet → ALB | 80 | Break 1 |
+| ALB → A | 3001 | Break 1 |
+| A → B | 3002 | Breaks 2–3 |
+| B → C | 3003 | Break 4 |
+| C → A `/callback` | 3001 | Break 5 |
+| A → C (forward) | 3003 | **Denied by design** (not a break) |
 
 ---
 
@@ -137,6 +145,6 @@ Day 0 running image (good): `.../devops-g10-iac-telemetry-parser:sha-aeb45210` o
 | Name | Role | Breaks | Status |
 |---|---|---|---|
 | Saloi | Service B | 1, 2, 3 + Day 0 evidence | Written 2026-08-28 |
-| Berissa | Service C | 4, 5, 6 | Drafted from live C logs — please confirm/replace |
+| Berissa | Service C | 4, 5, 6 + screenshots / Prom ServiceDown | Confirmed 2026-08-28 |
 | Yordanos | Service A | Review 1 | |
 | Arsema | Platform | Review SG / Service Connect vs `05-sg-matrix-traffic.md` | |
