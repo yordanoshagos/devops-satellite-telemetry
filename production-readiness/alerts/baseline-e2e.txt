@@ -1,0 +1,51 @@
+=== Day 0 baseline evidence (captured by Berissa, Service C owner) ===
+Timestamp (UTC): 2026-08-27T23:14:59Z
+Account: 240462142849  Region: eu-central-1
+ALB: http://devops-g10-iac-alb-1207406256.eu-central-1.elb.amazonaws.com
+CLUSTER: devops-g10-iac-cluster
+
+=== ECS running counts ===
+----------------------------------------------
+|              DescribeServices              |
++---------+----------------------+-----------+
+| desired |        name          |  running  |
++---------+----------------------+-----------+
+|  2      |  ground-station-api  |  2        |
+|  1      |  telemetry-parser    |  1        |
+|  1      |  anomaly-detector    |  1        |
++---------+----------------------+-----------+
+
+=== GET /health ===
+{
+    "dependencies": {
+        "anomaly_detector": "skipped: A\u2192C denied by traffic contract",
+        "telemetry_parser": "reachable"
+    },
+    "ground_station_id": "GS-Nairobi-1",
+    "service": "ground-station-api",
+    "service_version": "v1.0.0",
+    "status": "operational",
+    "uptime_seconds": 3552
+}
+
+=== POST /telemetry ===
+{
+    "ground_station_id": "GS-Nairobi-1",
+    "message": "Telemetry frame queued for processing",
+    "processing_request_id": "c5feb343-5d51-4797-ace1-f3276eac9760",
+    "satellite_id": "SAT-001",
+    "status": "accepted"
+}
+
+=== GET /status/c5feb343-5d51-4797-ace1-f3276eac9760 (after 3s) ===
+{
+    "message": "Request ID not found",
+    "status": "error"
+}
+
+=== CloudWatch: anomaly-detector callback errors (last 10m) ===
+{"timestamp": "2026-08-27T23:14:11.528157+00:00", "service": "anomaly-detector", "service_version": "v1.3.0", "level": "ERROR", "event": "callback_sent", "processing_request_id": "1578c224-3c92-4920-9c6b-80e24141e648", "satellite_id": "SAT-001", "outcome": "failure", "message": "Failed to send callback to Ground Station: HTTPConnectionPool(host='ground-station-api', port=3001): Max retries exceeded with url: /callback (Caused by NameResolutionError(\"HTTPConnection(host='ground-station-api', port=3001): Failed to resolve 'ground-station-api' ([Errno -2] Name or service not known)\"))", "trace_id": "7bb46959f0c1920177220469fae616f1", "request_id": "1578c224-3c92-4920-9c6b-80e24141e648"}	{"timestamp": "2026-08-27T23:14:11.531443+00:00", "service": "anomaly-detector", "service_version": "v1.3.0", "level": "ERROR", "event": "callback_sent", "processing_request_id": "pr-baseline-berissa-001", "satellite_id": "SAT-001", "outcome": "failure", "message": "Failed to send callback to Ground Station: HTTPConnectionPool(host='ground-station-api', port=3001): Max retries exceeded with url: /callback (Caused by NameResolutionError(\"HTTPConnection(host='ground-station-api', port=3001): Failed to resolve 'ground-station-api' ([Errno -2] Name or service not known)\"))", "trace_id": "6e58578284f636314f2e542193d762d2", "request_id": "pr-baseline-berissa-001"}	{"timestamp": "2026-08-27T23:14:23.773512+00:00", "service": "anomaly-detector", "service_version": "v1.3.0", "level": "ERROR", "event": "callback_sent", "processing_request_id": "0575de74-df56-49ac-b7e6-b2ef9156b4ee", "satellite_id": "SAT-001", "outcome": "failure", "message": "Failed to send callback to Ground Station: HTTPConnectionPool(host='ground-station-api', port=3001): Max retries exceeded with url: /callback (Caused by NameResolutionError(\"HTTPConnection(host='ground-station-api', port=3001): Failed to resolve 'ground-station-api' ([Errno -2] Name or service not known)\"))", "trace_id": "fbd9ae29f365989757eba41207e772c8", "request_id": "0575de74-df56-49ac-b7e6-b2ef9156b4ee"}	{"timestamp": "2026-08-27T23:14:30.324204+00:00", "service": "anomaly-detector", "service_version": "v1.3.0", "level": "ERROR", "event": "callback_sent", "processing_request_id": "9b6ab995-f6b1-4e4b-86b6-c06ce6fd2764", "satellite_id": "SAT-001", "outcome": "failure", "message": "Failed to send callback to Ground Station: HTTPConnectionPool(host='ground-station-api', port=3001): Max retries exceeded with url: /callback (Caused by NameResolutionError(\"HTTPConnection(host='ground-station-api', port=3001): Failed to resolve 'ground-station-api' ([Errno -2] Name or service not known)\"))", "trace_id": "b7a34197f112f52680fa565f63841be6", "request_id": "9b6ab995-f6b1-4e4b-86b6-c06ce6fd2764"}	{"timestamp": "2026-08-27T23:15:02.030466+00:00", "service": "anomaly-detector", "service_version": "v1.3.0", "level": "ERROR", "event": "callback_sent", "processing_request_id": "c5feb343-5d51-4797-ace1-f3276eac9760", "satellite_id": "SAT-001", "outcome": "failure", "message": "Failed to send callback to Ground Station: HTTPConnectionPool(host='ground-station-api', port=3001): Max retries exceeded with url: /callback (Caused by NameResolutionError(\"HTTPConnection(host='ground-station-api', port=3001): Failed to resolve 'ground-station-api' ([Errno -2] Name or service not known)\"))", "trace_id": "9e379261cf69d96de2f999942a046264", "request_id": "c5feb343-5d51-4797-ace1-f3276eac9760"}
+
+=== NOTE ===
+Journey is PARTIAL: A accepts, B parses, C analyzes, but C→A callback fails with NameResolutionError for host ground-station-api.
+Status stays awaiting_callback / never completed. This is production-readiness evidence of the callback edge, not a green e2e.
