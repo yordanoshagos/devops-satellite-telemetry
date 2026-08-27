@@ -1,0 +1,31 @@
+Production readiness baseline capture
+Date: 2026-08-28
+Account: 240462142849
+Region: eu-central-1
+ALB: http://devops-g10-iac-alb-1207406256.eu-central-1.elb.amazonaws.com
+Cluster: devops-g10-iac-cluster
+Captured by: Yordanos (Service A) during reliability-target work
+
+=== ECS describe-services (desired/running) ===
+ground-station-api  desired=2 running=2
+telemetry-parser    desired=1 running=1
+anomaly-detector    desired=1 running=1
+
+=== GET /health ===
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"reachable"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"operational","uptime_seconds":3502}
+
+=== POST /telemetry ===
+{"ground_station_id":"GS-Nairobi-1","message":"Telemetry frame queued for processing","processing_request_id":"1578c224-3c92-4920-9c6b-80e24141e648","satellite_id":"SAT-001","status":"accepted"}
+
+=== GET /status/1578c224-3c92-4920-9c6b-80e24141e648 (after wait) ===
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-PR-1","processing_request_id":"1578c224-3c92-4920-9c6b-80e24141e648","received_at":"2026-08-27T23:14:11.435359+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+=== Forward-path log proof (Service B) ===
+parse_complete success for 1578c224-3c92-4920-9c6b-80e24141e648
+forward_to_detector http://anomaly-detector:3003/analyze
+detector_response_received outcome=success message="Detector responded: nominal"
+
+=== Notes ===
+- A→B→C forward path is working.
+- Journey did not reach terminal "completed" (stuck awaiting_callback).
+- Separate /status polls sometimes returned "Request ID not found" while desiredCount(A)=2 (in-memory status + ALB spread across tasks).
