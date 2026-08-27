@@ -30,7 +30,7 @@ We use the **S3 native lockfile** (`use_lockfile = true`) supported by Terraform
 
 | Requirement | Value |
 |---|---|
-| Name | `devops-g10-tfstate-<account-id>` (naming pattern) — **live: `devops-g10-tfstate-827478161993`** |
+| Name | `devops-g10-tfstate-<account-id>` (naming pattern) — **live: `devops-g10-tfstate-240462142849`** |
 | Encryption | Default (AES256 / SSE-S3) |
 | Versioning | Enabled |
 | Public access | Blocked |
@@ -56,7 +56,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket       = "devops-g10-tfstate-827478161993"
+    bucket       = "devops-g10-tfstate-240462142849"
     key          = "lab/workload/terraform.tfstate"
     region       = "eu-central-1"
     encrypt      = true
