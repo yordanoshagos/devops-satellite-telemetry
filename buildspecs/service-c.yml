@@ -2,9 +2,9 @@ version: 0.2
 
 env:
   variables:
-    AWS_ACCOUNT_ID: "827478161993"
+    AWS_ACCOUNT_ID: "240462142849"
     AWS_DEFAULT_REGION: "eu-central-1"
-    ECR_REPO: "devops-g10-anomaly-detector"
+    ECR_REPO: "devops-g10-iac-anomaly-detector"
     CONTAINER_NAME: "anomaly-detector"
     DOCKERFILE: "service-c/Dockerfile"
     BUILD_CONTEXT: "service-c"
