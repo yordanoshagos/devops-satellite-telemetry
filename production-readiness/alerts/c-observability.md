@@ -45,6 +45,9 @@ docker-compose start anomaly-detector
 ```
 
 Screenshots:
-- `c-grafana-servicedown-prom-alerts.png` — Prometheus Alerts UI, **ServiceDown / service-c firing**
-- `c-prom-up-servicec-zero.png` — `up{job="service-c"} == 0`
-- `c-grafana-home.png` / `c-grafana-explore-up.png` — Grafana reachable (`admin`/`admin`)
+- `c-grafana-home.png` — Grafana home (light theme, logged in)
+- `c-grafana-explore-up.png` — Explore `up{job="service-c"}` = 1 (anomaly-detector)
+- `c-grafana-datasources.png` — Prometheus / Loki / Jaeger datasources
+- `c-grafana-dashboards.png` — Dashboards list
+- `c-prom-servicedown-firing.png` — Prometheus Alerts UI, **ServiceDown / service-c firing**
+- `c-prom-up-servicec-zero.png` — `up{job="service-c"} == 0` during drill
