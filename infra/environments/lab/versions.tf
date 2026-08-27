@@ -11,7 +11,7 @@ terraform {
   # backend blocks can't use variables, so the bootstrap bucket name is literal.
   # See infra/bootstrap/ and docs/iac-ecs-greenfield-lab/08-state-backend.md.
   backend "s3" {
-    bucket       = "devops-g10-tfstate-827478161993"
+    bucket       = "devops-g10-tfstate-240462142849"
     key          = "lab/workload/terraform.tfstate"
     region       = "eu-central-1"
     encrypt      = true
