@@ -1,0 +1,60 @@
+Production readiness baseline capture
+Date: 2026-08-28
+Account: 240462142849
+Region: eu-central-1
+ALB: http://devops-g10-iac-alb-1207406256.eu-central-1.elb.amazonaws.com
+Cluster: devops-g10-iac-cluster
+Captured by: Yordanos (Service A), Saloi (Service B), Berissa (Service C)
+
+=== ECS describe-services (desired/running) ===
+ground-station-api  desired=2 running=2
+telemetry-parser    desired=1 running=1
+anomaly-detector    desired=1 running=1
+
+=== GET /health ===
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"reachable"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"operational","uptime_seconds":3502}
+
+=== POST /telemetry (Yordanos sample) ===
+{"ground_station_id":"GS-Nairobi-1","message":"Telemetry frame queued for processing","processing_request_id":"1578c224-3c92-4920-9c6b-80e24141e648","satellite_id":"SAT-001","status":"accepted"}
+
+=== GET /status/1578c224-3c92-4920-9c6b-80e24141e648 (after wait) ===
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-PR-1","processing_request_id":"1578c224-3c92-4920-9c6b-80e24141e648","received_at":"2026-08-27T23:14:11.435359+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+=== Forward-path log proof (Service B) ===
+parse_complete success for 1578c224-3c92-4920-9c6b-80e24141e648
+forward_to_detector http://anomaly-detector:3003/analyze
+detector_response_received outcome=success message="Detector responded: nominal"
+
+=== Notes ===
+- A→B→C forward path is working.
+- Journey did not reach terminal "completed" (stuck awaiting_callback).
+- Separate /status polls sometimes returned "Request ID not found" while desiredCount(A)=2 (in-memory status + ALB spread across tasks).
+
+=== Saloi addendum (Service B / C callback DNS) ===
+Same window, C log group /ecs/devops-g10-iac-anomaly-detector for 1578c224-... and 9b6ab995-...:
+  event=callback_initiated  http://ground-station-api:3001/callback
+  event=callback_sent outcome=failure
+  NameResolutionError: Failed to resolve 'ground-station-api' ([Errno -2] Name or service not known)
+B parse path is not the break. See failure-map.md Break 5.
+
+=== Berissa addendum (Service C owner, 2026-08-27T23:14:59Z) ===
+ECS table (CLI):
+  ground-station-api  2/2
+  telemetry-parser    1/1
+  anomaly-detector    1/1
+
+POST /telemetry sample processing_request_id=c5feb343-5d51-4797-ace1-f3276eac9760 → accepted
+GET /status/c5feb343-... → sometimes "Request ID not found" (A desired=2, in-memory store)
+
+CloudWatch /ecs/devops-g10-iac-anomaly-detector (callback_sent ERROR):
+  Failed to resolve 'ground-station-api' on POST /callback
+  (same NameResolutionError as Saloi addendum)
+
+Screenshots:
+  alerts/c-callback-fail.png
+  alerts/c-status-stuck.png
+  alerts/c-ecs-running.png
+  alerts/c-health-operational.png
+  alerts/c-prom-servicedown-firing.png (compose ServiceDown drill)
+
+NOTE: Journey is PARTIAL — not a green e2e. GO-NO-GO should treat callback DNS as a condition until fixed.
