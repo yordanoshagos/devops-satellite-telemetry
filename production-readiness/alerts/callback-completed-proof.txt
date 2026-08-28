@@ -1,0 +1,73 @@
+========================================================================
+Callback completed proof — Saloi (Service B) + Berissa (Service C)
+Captured: 2026-08-28T20:31:39Z
+Profile: AWS_PROFILE=g10  Region: eu-central-1  Account: 240462142849
+ALB: http://devops-g10-iac-alb-1207406256.eu-central-1.elb.amazonaws.com
+Cluster: devops-g10-iac-cluster
+========================================================================
+
+===== ECS counts during proof (A scaled to 1 to avoid sticky store) =====
+---------------------------------------------------------
+|                   DescribeServices                    |
++---------+----------------------+----------+-----------+
+| desired |        name          | pending  |  running  |
++---------+----------------------+----------+-----------+
+|  1      |  ground-station-api  |  0       |  1        |
+|  1      |  telemetry-parser    |  0       |  1        |
+|  1      |  anomaly-detector    |  0       |  1        |
++---------+----------------------+----------+-----------+
+
+===== GET /health =====
+{"dependencies":{"anomaly_detector":"skipped: A\u2192C denied by traffic contract","telemetry_parser":"reachable"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"operational","uptime_seconds":1185}
+
+
+===== POST /telemetry =====
+{"ground_station_id":"GS-Nairobi-1","message":"Telemetry frame queued for processing","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","satellite_id":"SAT-001","status":"accepted"}
+
+processing_request_id=c75f987a-f7a1-46a7-8595-ca36ed8ddfd0
+
+===== GET /status/$ID polls =====
+--- poll 1 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 2 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 3 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 4 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 5 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 6 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 7 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 8 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 9 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 10 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 11 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 12 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 13 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 14 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+--- poll 15 ---
+{"anomalies_detected":[{"message":"Battery voltage above safe threshold: 28.4V","sensor":"battery_voltage_v","severity":"warning","threshold_max":16.0,"threshold_min":12.0,"value":28.4}],"anomaly_status":"warning","completed_at":"2026-08-28T20:31:42.119729+00:00","mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"c75f987a-f7a1-46a7-8595-ca36ed8ddfd0","received_at":"2026-08-28T20:31:42.101763+00:00","satellite_id":"SAT-001","status":"completed"}
+
+===== Verdict =====
+PASS — at least one poll returned status=completed
+
+===== C task (for log correlation) =====
+arn:aws:ecs:eu-central-1:240462142849:task/devops-g10-iac-cluster/239246dadc4e4782a0927149f96eaf56
+
+===== Post-proof: A restored to desired=2 =====
+ground-station-api  desired=2 running=2
+telemetry-parser    desired=1 running=1
+anomaly-detector    desired=1 running=1
+Restored: 2026-08-28T20:34:28Z (approx)
+Note: With A=2, alternate /status polls may still return "Request ID not found"
+(in-memory sticky). Proof above used A=1 deliberately.
