@@ -1,44 +1,51 @@
 # GO / NO-GO Decision
 
-**Date:** 2026-08-28  
+**Date:** 2026-08-29 (final sign-off after callback proof + incident drill)  
 **Account:** `240462142849` (`eu-central-1`)  
 **Cluster:** `devops-g10-iac-cluster`  
 **ALB:** `http://devops-g10-iac-alb-1207406256.eu-central-1.elb.amazonaws.com`  
-**Drafted by:** Arsema (Platform) — operated by Yordanos while Arsema is away  
-**Decision:** **GO WITH CONDITIONS**
+**Drafted by:** Arsema (Platform) — final update by Yordanos (Service A)  
+**Decision:** **GO**
 
 ---
 
 ## Decision summary
 
-The rehosted ECS baseline is **alive and useful**:
+The rehosted ECS lab meets production-readiness criteria for the mentorship challenge:
 
-- Services A/B/C at desired running counts **2 / 1 / 1**
-- ALB `/health` returns **`operational`** with **`telemetry_parser=reachable`**
-- Forward path **A → B → C** proven in logs (`Detector responded: nominal`)
-- CI buildspecs retargeted to this account (merged to `develop`)
+- Services A/B/C at desired running counts **2 / 1 / 1** (verified 2026-08-29)
+- ALB `/health` → **`operational`**, **`telemetry_parser=reachable`**
+- Forward path **A → B → C** proven; callback **C → A** proven (`alerts/callback-completed-proof.txt`)
+- **IAM roles recreated** and all services rolled (`fix/arsema-tfvars-ecr-image-shas`, platform apply 2026-08-28)
+- **Incident drill** completed with TTD/TTR recorded (`incident-timeline.md`)
+- **Failure-map**, **B/C alert packs**, **runbook**, and **reliability target** on `develop`
 
-We are **not** a clean unconditional GO yet: the critical journey’s terminal step (**C → A callback / completed status**) is still unreliable in this lab (status stuck `awaiting_callback`; intermittent `Request ID not found` with A desired=2 in-memory state). Failure-map, B/C alert screenshots, and the controlled incident timeline are still owned by the wider group.
+**Accepted lab limitations (not blockers):**
+
+- **A sticky in-memory status** when `desired=2` — alternate `/status` polls may return `Request ID not found`; proof used A=1; documented in callback proof + incident timeline
+- **No Prometheus/ServiceDown on ECS** — compose alerts only; ECS detection via ECS counts + `/health` JSON + ingest 502
+- **Jaeger/OTLP unavailable on ECS** — compose tracing for demos
 
 ---
 
 ## Three strongest evidence items
 
-1. **ECS running baseline** — `ground-station-api=2`, `telemetry-parser=1`, `anomaly-detector=1` (captured in Yordanos `alerts/baseline-e2e.txt`).  
-2. **Edge health** — ALB `/health` → `status=operational`, `telemetry_parser=reachable`.  
-3. **Forward-path proof** — same capture: `POST /telemetry` accepted; B parse + detector nominal for `processing_request_id=1578c224-3c92-4920-9c6b-80e24141e648`.
+1. **Callback journey complete** — `POST /telemetry` → **`status=completed`** in 15/15 polls with A=1 (`alerts/callback-completed-proof.txt`, mission `MISSION-COMPLETED-PROOF`).  
+2. **Incident response proven** — B-down drill: TTD **21–23 s**, TTR **~2 min**, ingest restored to HTTP 202 (`incident-timeline.md`, `alerts/incident-drill-b-down-2026-08-28.txt`).  
+3. **ECS baseline stable** — A=2/2, B=1/1, C=1/1; edge `/health` operational; forward path + platform IAM/SC/SG verified.
 
 ---
 
-## Conditions (must track)
+## Conditions (final)
 
-| # | Condition | Owner to close |
-|---|-----------|----------------|
-| 1 | Document and fix or accept **status sticky / multi-task in-memory** gap (A desired=2) | Yordanos + Arsema |
-| 2 | Prove **callback completion** (status → completed) or record as known SEV in failure-map | Berissa + Arsema |
-| 3 | Saloi/Berissa complete **failure-map.md** (≥5 break points) | Saloi drafted 1–6 (Berissa confirm 4–6) |
-| 4 | Add **B/C alert notes + firing screenshots**; finish incident drill + `incident-timeline.md` | B notes + ServiceDown PNGs landed; C notes + drill still open |
-| 5 | Jaeger/OTLP unavailable on ECS (noisy logs) — accept compose tracing for now | Platform |
+| # | Condition | Status | Owner |
+|---|-----------|--------|-------|
+| 1 | **Status sticky / multi-task in-memory** (A desired=2) | **Accepted** — workaround: scale A→1 for status proof; document in runbook | Yordanos + Arsema |
+| 2 | **Callback → completed** proof | **Closed** — `alerts/callback-completed-proof.txt` merged (#93) | Saloi + Berissa |
+| 3 | **failure-map.md** (≥5 break points) | **Closed** — merged (#91 updates Break 5/7) | Saloi + Berissa |
+| 4 | **B/C alerts + incident timeline** | **Closed** — drill + `incident-timeline.md` + evidence file | Yordanos + Saloi + Berissa |
+| 5 | Jaeger/OTLP unavailable on ECS | **Accepted** — compose tracing for demos | Platform |
+| 6 | **Recreate IAM roles + roll A/B/C** | **Closed** — terraform apply + force-new-deployment 2026-08-28; tfvars fix #92 | Yordanos / Arsema |
 
 ---
 
@@ -46,19 +53,19 @@ We are **not** a clean unconditional GO yet: the critical journey’s terminal s
 
 | Name | Role | Vote | Notes |
 |------|------|------|-------|
-| Arsema A. Gebremichael | Platform | **GO WITH CONDITIONS** | Drafted; conditions above |
-| Yordanos Tesfay Hagos | Service A | _pending on PR review_ | Reliability target + A alerts landed |
-| Saloi | Service B | **GO WITH CONDITIONS** | B parse proven in CloudWatch; callback DNS still fails so `/status` never `completed` |
-| Berissa | Service C | _pending_ | failure-map + c-notes + callback proof |
+| Arsema A. Gebremichael | Platform | **GO** | IAM recreated; SC sidecar + callback SG verified; C on new task post-roll |
+| Yordanos Tesfay Hagos | Service A | **GO** | Led incident drill; sticky `/health` + status documented as accepted limitation |
+| Saloi | Service B | **GO** | B evidence + DNS diagnosis + callback completed proof merged |
+| Berissa | Service C | **GO** | C alerts merged; callback completed verified on task `239246da…` |
 
 ---
 
 ## Revisit rule
 
-Flip to **GO** only when:
+**NO-GO** if baseline `/health` or running counts regress and stay broken for >15 minutes without recovery plan.
 
-1. A sample `POST /telemetry` reaches **completed** status (or sticky-store fix is shipped), and  
-2. failure-map + alert screenshots + incident timeline are merged, and  
-3. All four sign below without open SEV blockers.
+**Post-GO follow-ups (backlog, not blockers):**
 
-Flip to **NO-GO** if baseline `/health` or running counts regress and stay broken.
+1. Shared status store or sticky sessions for A when `desired>1`
+2. ECS CloudWatch alarm on `RunningTaskCount < Desired` per service
+3. Journey synthetic monitor (POST + poll `completed`)
