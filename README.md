@@ -637,6 +637,20 @@ Under **Settings → Secrets and variables → Actions**:
 | Variable | `DOCKERHUB_USERNAME` | Your Docker Hub username/namespace |
 | Secret | `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://hub.docker.com/settings/security) (not your password) |
 
+### AWS lab deploy path (account `240462142849`)
+
+GitHub Actions in [`.github/workflows/container-ci-cd.yml`](.github/workflows/container-ci-cd.yml) **does not deploy to AWS**. It runs tests, validates Compose, and **publishes images to Docker Hub** (`sha-<commit>` tags only).
+
+The **AWS ECS lab** in `eu-central-1` is deployed separately:
+
+1. **Build & push** — `buildspecs/service-a.yml`, `service-b.yml`, `service-c.yml` (CodeBuild) → ECR repos `devops-g10-iac-*` in account **`240462142849`**
+2. **Deploy** — CodePipeline (or manual) updates ECS task definitions / services on cluster `devops-g10-iac-cluster`
+3. **Infra** — Terraform in `infra/environments/lab/` (VPC, ALB, ECS, Service Connect, SGs)
+
+Image SHAs in `infra/environments/lab/service-*.auto.tfvars` must match immutable ECR tags (`sha-<gitsha>`). Region stays **`eu-central-1`**.
+
+> Optional future work: GitHub Actions OIDC → ECR push in `240462142849`. Not required for the current lab; CodeBuild buildspecs are the live AWS auth/deploy config.
+
 ## Container CI/CD Deployment
 
 ### Latest deployed version
