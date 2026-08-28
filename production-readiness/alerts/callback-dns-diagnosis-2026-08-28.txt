@@ -1,0 +1,191 @@
+========================================================================
+Callback path still broken — diagnosis by Saloi
+Captured: 2026-08-28 (~22:20–22:45 EAT / 19:20–19:45 UTC)
+Profile: AWS_PROFILE=g10   Region: eu-central-1   Account: 240462142849
+ALB:     http://devops-g10-iac-alb-1207406256.eu-central-1.elb.amazonaws.com
+Cluster: devops-g10-iac-cluster
+========================================================================
+
+TL;DR
+-----
+Critical journey never reaches "completed". Confirmed tonight:
+
+  1. Service Connect IS on (sidecar on C; Cloud Map names are correct).
+  2. The empty `serviceConnectConfiguration` table was a red herring —
+     describe-services omits that field here; Cloud Map + sidecar prove SC.
+  3. DNS fix commit 6651bdd is on BOTH origin/main and origin/develop.
+     This is NOT a develop-vs-main branch problem.
+  4. C→A callback still fails with NameResolutionError for
+     `ground-station-api` (logged Aug 27 23:15 UTC on the still-running C task).
+  5. P0: IAM roles `devops-g10-iac-cluster-task` AND
+     `devops-g10-iac-cluster-execution` DO NOT EXIST in the account.
+     That blocks every rollout and explains why CloudWatch logging stopped
+     ~12h ago on A/B (awslogs creds expired after role deletion).
+
+Until platform recreates those roles (terraform apply) and rolls C,
+`/status` cannot reach "completed". Vote stays GO WITH CONDITIONS.
+
+========================================================================
+Finding 1 — Empty SC query ≠ "SC is off"
+========================================================================
+Command that returned blank:
+
+  aws ecs describe-services ... --query
+    'services[0].serviceConnectConfiguration.services[...]'
+
+Result: empty (serviceConnectConfiguration is null / absent on the
+describe-services payload for all three services).
+
+BUT live evidence that Service Connect IS active:
+
+  * Running C task containers:
+      ["ecs-service-connect-4YW5j", "anomaly-detector"]
+    (also documented in platform-verification-2026-08-28.md Step 2)
+  * Cloud Map namespace: group10-iac.internal (HTTP)
+  * Cloud Map services (correct post-6651bdd names):
+      ground-station-api, telemetry-parser, anomaly-detector
+  * DiscoverInstances returns live IPs for all three
+  * A→B short-name DNS works right now:
+      POST /telemetry reaches http://telemetry-parser:3002/parse
+      (/health also reports telemetry_parser=reachable)
+
+So case (a) from earlier ("terraform never renamed SC") is FALSE.
+Names in AWS match the code. The blank table does not mean SC is missing.
+
+========================================================================
+Finding 2 — Not a develop-vs-main issue
+========================================================================
+Commit 6651bdd (Saloi, Aug 4) renamed service_connect_name to
+ground-station-api / telemetry-parser / anomaly-detector.
+
+  * origin/main    contains 6651bdd  ✓
+  * origin/develop contains 6651bdd  ✓
+  * tip difference: only 2 docs commits (PR #90)
+
+Pinned image sha-aeb4521 is after 6651bdd. Branch skew is not the cause.
+
+========================================================================
+Finding 3 — C→A callback DNS still fails (asymmetric)
+========================================================================
+C stream anomaly-detector/.../b53f40fd75ed4576aeefe694288d6712
+(still the CURRENT running task, started 2026-08-28T01:09:46+03:00):
+
+  event=callback_initiated
+    http://ground-station-api:3001/callback
+  event=callback_sent outcome=FAILURE
+    NameResolutionError: Failed to resolve 'ground-station-api'
+    ([Errno -2] Name or service not known)
+
+Forward path short names work (telemetry-parser, anomaly-detector historically).
+Reverse path ground-station-api does not resolve from C's process.
+
+SG callback rule C→A:3001 is present (platform-verification Step 3 PASS).
+So this is DNS-from-C, not SG deny.
+
+Likely needs a fresh C task (Envoy refresh) AFTER IAM is fixed — cannot
+prove tonight because rollouts are blocked (Finding 4).
+
+Live retest 2026-08-28T19:43:46Z with valid telemetry_frame:
+  POST accepted → id=cdfd5a4a-fb2c-4088-91e5-cea884abdadd
+  8× GET /status → awaiting_callback (never completed)
+  (CloudWatch has no new lines for this id — see Finding 4 logging gap)
+
+========================================================================
+Finding 4 — P0: g10 IAM task + execution roles are GONE
+========================================================================
+Task definitions still reference:
+
+  taskRoleArn:      arn:aws:iam::240462142849:role/devops-g10-iac-cluster-task
+  executionRoleArn: arn:aws:iam::240462142849:role/devops-g10-iac-cluster-execution
+
+aws iam get-role for BOTH → NoSuchEntity
+aws iam list-roles | grep devops-g10-iac → EMPTY
+(other groups g1–g9 still have their roles in this account)
+
+ECS events on ground-station-api (tonight):
+
+  failed to launch a task with (error ECS was unable to assume the role
+  'arn:aws:iam::240462142849:role/devops-g10-iac-cluster-task' ...)
+
+Effect:
+  * A desired=2 running=1 (cannot place second task)
+  * force-new-deployment on C fails (Arsema/Yordanos platform-verification)
+  * CloudWatch last events:
+      A last log ~2026-08-28T07:06Z (~12.6h ago)
+      B last log ~2026-08-28T07:07Z (~12.6h ago)
+      C last log ~2026-08-27T23:15Z (~20.5h ago)
+    Tasks still serve HTTP (no IAM needed for that), but awslogs push
+    stopped after role deletion / cred refresh failure.
+
+Fix owner: Platform (Yordanos / Arsema) — recreate via
+  terraform apply in infra/environments/lab (ecs-platform module creates
+  ${cluster_name}-task and ${cluster_name}-execution).
+Then: force-new-deployment on A, B, C → retest completed proof.
+
+Do NOT hand-create roles unless terraform cannot run; terraform is source of truth.
+
+========================================================================
+Finding 5 — Detection gap
+========================================================================
+None of the above trips ServiceDown / HighErrorRate:
+  * C RUNNING but idle / callback failing inside app
+  * A 1/2 not 0/2
+  * ALB looks healthy (/health operational)
+  * After IAM deletion, we also lost CloudWatch visibility for ~12h
+    with no alert
+
+Belongs in incident-timeline.md TTD section when drill runs.
+
+========================================================================
+Impact on Saloi GO-NO-GO
+========================================================================
+GO WITH CONDITIONS. Conditions:
+
+  [x] C1  A /health operational + telemetry_parser=reachable
+  [ ] C2  POST → status=completed          RED
+  [ ] C3  IAM roles exist; cluster can roll RED (Finding 4)
+  [ ] C4  Alert on journey / callback fail  Not designed
+  [ ] C5  incident-timeline.md              Pending Yordanos drill
+
+========================================================================
+Tonight live evidence (2026-08-28T19:43Z)
+========================================================================
+GET /health → operational, telemetry_parser=reachable, uptime~77244s
+POST with full telemetry_frame → accepted
+  processing_request_id=cdfd5a4a-fb2c-4088-91e5-cea884abdadd
+8× /status → awaiting_callback
+ECS: A 2/1, B 1/1, C 1/1
+
+========================================================================
+Raw poll evidence (earlier A desired=1 test) — id 1fb151e9-...
+10/10 awaiting_callback — preserved below
+========================================================================
+--- poll 1 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 2 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 3 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 4 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 5 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 6 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 7 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 8 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 9 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}
+
+--- poll 10 ---
+{"anomalies_detected":[],"anomaly_status":null,"completed_at":null,"mission_id":"MISSION-COMPLETED-PROOF","processing_request_id":"1fb151e9-899b-422c-b096-0e0a047467be","received_at":"2026-08-28T19:19:31.314688+00:00","satellite_id":"SAT-001","status":"awaiting_callback"}

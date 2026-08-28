@@ -17,6 +17,8 @@
 
 **Live Day 0 (2026-08-27T23:14Z):** A→B→C data path works. C→A callback does **not**. See [`alerts/baseline-e2e.txt`](alerts/baseline-e2e.txt), [`alerts/c-callback-fail.png`](alerts/c-callback-fail.png), [`alerts/c-status-stuck.png`](alerts/c-status-stuck.png).
 
+**Update (2026-08-28T19:45Z, Saloi):** Callback still broken; SG + SC names + sidecar OK; **IAM task/execution roles missing** (blocks rollouts). Full write-up: [`alerts/callback-dns-diagnosis-2026-08-28.txt`](alerts/callback-dns-diagnosis-2026-08-28.txt).
+
 ---
 
 ### Break 1 — ALB / Service A unhealthy
@@ -94,19 +96,23 @@ Day 0 running image (good): `.../devops-g10-iac-telemetry-parser:sha-aeb45210` o
 
 ---
 
-### Break 5 — C→A callback (SG **or** Service Connect DNS) *(Berissa)*
+### Break 5 — C→A callback (SG **or** Service Connect DNS) *(Berissa + Saloi recheck 2026-08-28)*
 
 - **Failure:** Pipeline A→B→C runs, then C cannot `POST /callback` to A.
-  - **SG (predicted):** missing `devops-g10-iac-anomaly-detector-sg` → `devops-g10-iac-ground-station-api-sg` TCP 3001. Same class as SCAR-004.
-  - **DNS (observed Day 0, 2026-08-27T23:14Z):** C logs `NameResolutionError` — Failed to resolve `'ground-station-api'`. C uses `GROUND_STATION_CALLBACK_URL` default `http://ground-station-api:3001/callback`. Forward path still works; every sampled callback in the window failed the same way.
+  - **SG:** **Ruled out for current lab** — `callback_c_to_a` rule is present (`platform-verification-2026-08-28.md` Step 3 PASS).
+  - **DNS (observed Day 0 + still true 2026-08-28):** C logs `NameResolutionError` — Failed to resolve `'ground-station-api'`. C uses `GROUND_STATION_CALLBACK_URL` default `http://ground-station-api:3001/callback`.
+  - **Not a wrong-branch issue:** commit `6651bdd` (SC names → `ground-station-api` / `telemetry-parser` / `anomaly-detector`) is on **both** `origin/main` and `origin/develop`. Cloud Map already has those names; C task has Service Connect sidecar.
+  - **Asymmetry:** A→B short-name DNS works (`telemetry-parser`). C→A short-name DNS fails (`ground-station-api`) from the same namespace.
+  - **Rollout blocked:** cannot refresh C’s Envoy until Break 7 (IAM) is fixed — same C task `b53f40fd…` since bootstrap.
 - **Detect:**
   - `/status/<id>` stuck at `awaiting_callback` (or 404 `Request ID not found` on the other A replica)
   - C logs `event=callback_sent` `outcome=failure` (`alerts/c-callback-fail.png`)
   - A logs: no `event=callback_received` for that id
   - `/health` still `operational` — ALB→A and A→B are intact (**do not trust health alone**)
-- **Absorb:** Parse + analyze succeed (`/analyze` 200, anomaly detection complete). Only the return path breaks.
+  - Confirm Cloud Map: `aws servicediscovery discover-instances --namespace-name group10-iac.internal --service-name ground-station-api`
+- **Absorb:** Parse + analyze succeed (`/analyze` 200, anomaly detection complete). Only the return path breaks. After IAM deletion, CloudWatch may also go silent while HTTP still works — do not assume “no logs” means “no traffic.”
 - **User impact:** Critical journey **fails**. Client cannot see `completed`.
-- **Evidence:** `alerts/baseline-e2e.txt`, `alerts/c-callback-fail.png`, `alerts/c-status-stuck.png`, `alerts/c-notes.md`
+- **Evidence:** `alerts/baseline-e2e.txt`, `alerts/c-callback-fail.png`, `alerts/c-status-stuck.png`, `alerts/c-notes.md`, **`alerts/callback-dns-diagnosis-2026-08-28.txt`**
 
 ---
 
@@ -119,11 +125,26 @@ Day 0 running image (good): `.../devops-g10-iac-telemetry-parser:sha-aeb45210` o
 
 ---
 
+### Break 7 — IAM task / execution roles missing *(Platform — Yordanos / Arsema)* **P0 live 2026-08-28**
+
+- **Failure:** Task defs still reference `devops-g10-iac-cluster-task` and `devops-g10-iac-cluster-execution`, but both roles **do not exist** in account `240462142849` (`iam get-role` → `NoSuchEntity`). Existing tasks keep serving HTTP; **no new task can launch**.
+- **Detect:**
+  - ECS events: `unable to assume the role '.../devops-g10-iac-cluster-task'`
+  - A `desired=2` `running=1` (cannot place second task)
+  - `force-new-deployment` stays stuck / fails (see `platform-verification-2026-08-28.md`)
+  - CloudWatch last events go stale while ALB `/health` still works (awslogs creds die after role deletion)
+- **Absorb:** Baseline looks “up” from the ALB. Break 5 cannot be mitigated by rolling C. Logging / Exec / new deploys are blind.
+- **User impact:** Indirect — journey stays broken; ops cannot recover without recreating roles.
+- **Fix:** `terraform apply` in `infra/environments/lab` (ecs-platform creates `${cluster_name}-task` / `-execution`), then force-new-deployment on A/B/C. Evidence: `alerts/callback-dns-diagnosis-2026-08-28.txt` Finding 4.
+
+---
+
 ## Extra detection gaps (not extra break rows — they change how we page)
 
 1. **A `/health` is always HTTP 200.** Degraded B still looks like a healthy ALB target. Do not use ALB target-health alone for the parse path — read the JSON `telemetry_parser` field and B running count.
-2. **A `request_store` is in-memory and A desired=2.** `GET /status/<id>` load-balances; ~half the responses are `Request ID not found` even when the other replica has `awaiting_callback`. Success SLI “% completed” is not measurable through the ALB without sticky sessions or shared state.
+2. **A `request_store` is in-memory and A desired=2.** `GET /status/<id>` load-balances; ~half the responses are `Request ID not found` even when the other replica has `awaiting_callback`. Success SLI “% completed” is not measurable through the ALB without sticky sessions or shared state. (Tonight A is often **2/1** because of Break 7 — sticky is secondary until IAM is fixed.)
 3. **Prometheus `ServiceDown` is compose-only on ECS.** ECS lab signal is CloudWatch + ECS running count + logs; compose Prom/Grafana still used for alert demos (`alerts/c-observability.md`).
+4. **Missing IAM roles do not page.** Services stay “running”; only Events + failed launches show it. Pair with Break 7.
 
 ---
 
@@ -144,7 +165,7 @@ Day 0 running image (good): `.../devops-g10-iac-telemetry-parser:sha-aeb45210` o
 
 | Name | Role | Breaks | Status |
 |---|---|---|---|
-| Saloi | Service B | 1, 2, 3 + Day 0 evidence | Written 2026-08-28 |
-| Berissa | Service C | 4, 5, 6 + screenshots / Prom ServiceDown | Confirmed 2026-08-28 |
-| Yordanos | Service A | Review 1 | |
-| Arsema | Platform | Review SG / Service Connect vs `05-sg-matrix-traffic.md` | |
+| Saloi | Service B | 1, 2, 3 + Break 5 recheck + Break 7 evidence | Written 2026-08-28; DNS diagnosis filed |
+| Berissa | Service C | 4, 5, 6 + screenshots / Prom ServiceDown | Confirmed 2026-08-28; re-verify callback after IAM fix |
+| Yordanos | Service A | Review 1 + sticky + **Break 7 terraform apply** | |
+| Arsema | Platform | Review SG / SC + **Break 7** + completed proof | Partial (`platform-verification-2026-08-28.md`) |

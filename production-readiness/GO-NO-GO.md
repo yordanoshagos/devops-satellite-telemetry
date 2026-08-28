@@ -21,9 +21,9 @@ The rehosted ECS baseline is **alive and useful**:
 
 We are **not** an unconditional GO yet:
 
-- **`POST /telemetry` → `status=completed`** not reliably proven (still `awaiting_callback`; intermittent `Request ID not found` with A **desired=2** in-memory state)
+- **`POST /telemetry` → `status=completed`** not proven (still `awaiting_callback`; see `alerts/callback-dns-diagnosis-2026-08-28.txt`)
 - **`incident-timeline.md`** not merged (Yordanos drill pending)
-- Force-new-deployment on C hit **IAM task-role assume** error (old task still running with Service Connect sidecar — see `platform-verification-2026-08-28.md`)
+- **P0 IAM:** roles `devops-g10-iac-cluster-task` and `devops-g10-iac-cluster-execution` **do not exist** in account `240462142849` — blocks all ECS rollouts and stopped CloudWatch log shipping ~12h ago (Saloi diagnosis 2026-08-28)
 
 ---
 
@@ -39,11 +39,12 @@ We are **not** an unconditional GO yet:
 
 | # | Condition | Status | Owner |
 |---|-----------|--------|-------|
-| 1 | **Status sticky / multi-task in-memory** (A desired=2) | Open | Yordanos + Arsema |
-| 2 | **Callback → completed** proof | Open — roll C blocked by IAM; SG + SC sidecar OK | Berissa + Arsema |
+| 1 | **Status sticky / multi-task in-memory** (A desired=2) | Open — A currently **2 desired / 1 running** (cannot place 2nd task) | Yordanos + Arsema |
+| 2 | **Callback → completed** proof | Open — SC names + sidecar OK; C→A still NameResolutionError; roll blocked by missing IAM roles | Berissa + Arsema + Saloi evidence |
 | 3 | **failure-map.md** (≥5 break points) | **Closed** — merged | Saloi + Berissa |
-| 4 | **B/C alerts + incident timeline** | Partial — B/C notes + PNGs merged; **GHA = Docker Hub only**; AWS deploy = **CodeBuild → ECR → ECS** in `240462142849` (README §CI/CD); drill + `incident-timeline.md` still open | All |
+| 4 | **B/C alerts + incident timeline** | Partial — B/C notes + PNGs merged; drill + `incident-timeline.md` still open | All |
 | 5 | Jaeger/OTLP unavailable on ECS | **Accepted** — compose tracing for demos | Platform |
+| 6 | **Recreate g10 IAM task + execution roles** (`terraform apply`) then force-new-deployment A/B/C | **Open P0** — roles missing; see `alerts/callback-dns-diagnosis-2026-08-28.txt` Finding 4 | Yordanos / Arsema (platform) |
 
 ---
 
@@ -53,7 +54,7 @@ We are **not** an unconditional GO yet:
 |------|------|------|-------|
 | Arsema A. Gebremichael | Platform | **GO WITH CONDITIONS** | Verified SC sidecar + callback SG; C roll IAM error documented |
 | Yordanos Tesfay Hagos | Service A | _pending_ | Incident timeline + sticky mitigation |
-| Saloi | Service B | **GO WITH CONDITIONS** | B evidence merged; awaiting completed callback proof |
+| Saloi | Service B | **GO WITH CONDITIONS** | B evidence merged; DNS diagnosis filed; blocked on IAM recreate + completed proof |
 | Berissa | Service C | _pending_ | C alerts merged; sign after drill |
 
 ---
