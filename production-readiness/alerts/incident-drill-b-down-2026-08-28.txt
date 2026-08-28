@@ -1,0 +1,137 @@
+========================================================================
+Production Readiness Incident Drill — Service B down (ECS)
+Led by: Yordanos Tesfay Hagos (Service A)
+Failure inject: stop telemetry-parser task (Saloi drill action)
+Profile: g10-arsema  Region: eu-central-1  Account: 240462142849
+========================================================================
+
+===== T0 (failure injected) ===== 2026-08-28T20:49:31Z
+
+===== PRE-DRILL baseline =====
+---------------------------------------------------------
+|                   DescribeServices                    |
++---------+----------------------+----------+-----------+
+| desired |        name          | pending  |  running  |
++---------+----------------------+----------+-----------+
+|  2      |  ground-station-api  |  0       |  2        |
+|  1      |  telemetry-parser    |  0       |  1        |
+|  1      |  anomaly-detector    |  0       |  1        |
++---------+----------------------+----------+-----------+
+
+GET /health (pre):
+{"dependencies":{"anomaly_detector":"skipped: A\u2192C denied by traffic contract","telemetry_parser":"reachable"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"operational","uptime_seconds":2258}
+
+
+Stopping B task: arn:aws:ecs:eu-central-1:240462142849:task/devops-g10-iac-cluster/78955cd286ad46b3bb72736f6a1a5613
+{
+    "taskArn": "arn:aws:ecs:eu-central-1:240462142849:task/devops-g10-iac-cluster/78955cd286ad46b3bb72736f6a1a5613",
+    "lastStatus": "DEACTIVATING",
+    "stoppedReason": "Production readiness incident drill - ServiceDown"
+}
+
+===== POST-FAILURE ECS (T0+15s) =====
+[
+    {
+        "name": "telemetry-parser",
+        "desired": 1,
+        "running": 0,
+        "pending": 0,
+        "events": [
+            {
+                "id": "76163f58-8f08-44f9-a3d1-605a2fd5211b",
+                "createdAt": "2026-08-28T23:15:02.403000+03:00",
+                "message": "(service telemetry-parser) has reached a steady state."
+            },
+            {
+                "id": "fed898c8-140e-4a8a-8550-70040bf19bdb",
+                "createdAt": "2026-08-28T23:15:02.402000+03:00",
+                "message": "(service telemetry-parser) (deployment ecs-svc/5042995753368461227) deployment completed."
+            }
+        ]
+    },
+    {
+        "name": "ground-station-api",
+        "desired": 2,
+        "running": 2,
+        "pending": 0,
+        "events": [
+            {
+                "id": "021368a3-e6b8-47f0-8345-780561081ab2",
+                "createdAt": "2026-08-28T23:34:29.198000+03:00",
+                "message": "(service ground-station-api) has reached a steady state."
+            },
+            {
+                "id": "a070c985-8f86-4994-a3ee-4a922a653370",
+                "createdAt": "2026-08-28T23:34:20.528000+03:00",
+                "message": "(service ground-station-api) registered 1 targets in (target-group arn:aws:elasticloadbalancing:eu-central-1:240462142849:targetgroup/devops-g10-iac-tg/cb23c37d2293b62e)"
+            }
+        ]
+    }
+]
+--- detect poll 1 @ 2026-08-28T20:49:52Z running=0 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"reachable"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"operational","uptime_seconds":2277}
+DETECTED: B running=0 via ECS
+
+===== POST-FAILURE ingest test =====
+POST /telemetry HTTP 502
+{"message":"Telemetry parser unreachable: 503 Server Error: Service Unavailable for url: http://telemetry-parser:3002/parse","processing_request_id":"ccec75aa-7d82-4a6b-a214-534cf1f95480","status":"error"}
+
+
+===== A logs (last 5m, parser/unreachable) =====
+
+===== RECOVERY: force-new-deployment on telemetry-parser =====
+Recovery started: 2026-08-28T20:49:56Z
+{
+    "name": "telemetry-parser",
+    "desired": 1,
+    "running": 0
+}
+--- recover poll 1 @ 2026-08-28T20:49:57Z running=0 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"unhealthy"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"degraded","uptime_seconds":941}
+--- recover poll 2 @ 2026-08-28T20:50:09Z running=0 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"unhealthy"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"degraded","uptime_seconds":953}
+--- recover poll 3 @ 2026-08-28T20:50:20Z running=0 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"unhealthy"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"degraded","uptime_seconds":2306}
+--- recover poll 4 @ 2026-08-28T20:50:32Z running=0 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"unhealthy"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"degraded","uptime_seconds":976}
+--- recover poll 5 @ 2026-08-28T20:50:43Z running=0 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"unhealthy"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"degraded","uptime_seconds":987}
+--- recover poll 6 @ 2026-08-28T20:50:55Z running=0 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"unhealthy"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"degraded","uptime_seconds":2341}
+--- recover poll 7 @ 2026-08-28T20:51:07Z running=0 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"unhealthy"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"degraded","uptime_seconds":2352}
+--- recover poll 8 @ 2026-08-28T20:51:18Z running=1 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"unhealthy"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"degraded","uptime_seconds":1022}
+--- recover poll 9 @ 2026-08-28T20:51:30Z running=1 ---
+{"dependencies":{"anomaly_detector":"skipped: A→C denied by traffic contract","telemetry_parser":"reachable"},"ground_station_id":"GS-Nairobi-1","service":"ground-station-api","service_version":"v1.0.0","status":"operational","uptime_seconds":2375}
+RECOVERED: B running=1 and /health telemetry_parser=reachable
+
+===== POST-RECOVERY ingest test =====
+POST /telemetry HTTP 202
+{"ground_station_id":"GS-Nairobi-1","message":"Telemetry frame queued for processing","processing_request_id":"3ef07699-5f97-4aed-b99f-1d4e0d6ea0df","satellite_id":"SAT-001","status":"accepted"}
+
+
+===== FINAL ECS counts =====
+---------------------------------------------------------
+|                   DescribeServices                    |
++---------+----------------------+----------+-----------+
+| desired |        name          | pending  |  running  |
++---------+----------------------+----------+-----------+
+|  2      |  ground-station-api  |  0       |  2        |
+|  1      |  telemetry-parser    |  0       |  1        |
+|  1      |  anomaly-detector    |  0       |  1        |
++---------+----------------------+----------+-----------+
+
+===== TIMestamps summary =====
+T0=2026-08-28T20:49:31Z
+TTD_detect=2026-08-28T20:49:52Z
+T_recover_start=2026-08-28T20:49:56Z
+T_recovered=2026-08-28T20:51:30Z
+
+===== A CloudWatch logs (drill window, parser events) =====
+{"timestamp": "2026-08-28T20:49:54.444598+00:00", "event": "forward_to_parser", "outcome": "in_progress", ...}
+{"timestamp": "2026-08-28T20:49:54.447461+00:00", "event": "forward_to_parser", "outcome": "failure", "message": "Failed to reach telemetry parser: 503 Server Error..."}
+{"timestamp": "2026-08-28T20:51:32.184399+00:00", "event": "parser_response_received", "outcome": "success", "message": "Parser responded: parsed", "duration_ms": 98}
+
+===== New B task after recovery =====
+arn:aws:ecs:eu-central-1:240462142849:task/devops-g10-iac-cluster/1d673018afde4733bfe0d104f0083b81
